@@ -71,7 +71,7 @@ This document records the architectural design choices made for the Baki subscri
 ## ADR-009: Support English and Malay from the Start
 * **Status**: Approved
 * **Context**: The target users reside in Malaysia. Need validation and UI terms in local language without code duplication.
-* **Decision**: Integrate localization utilities (`next-intl`) and maintain translation bundles for English (`en`) and Malay (`ms`).
+* **Decision**: Integrate localization utilities (`next-intl`) and maintain translation bundles for English (`en-MY`) and Malay (`ms-MY`).
 * **Rationale**: Avoids hardcoding UI text, supporting immediate multilingual usability testing.
 
 ---
@@ -92,8 +92,24 @@ This document records the architectural design choices made for the Baki subscri
 
 ---
 
-## ADR-012: Postpone Imports and Integrations
+## ADR-012: Postpone Direct Bank Integrations
 * **Status**: Approved
-* **Context**: Banking APIs, CSV parsing, OCR engines, and email receipt scraping introduce high privacy and security risks.
-* **Decision**: Defer OCR, receipt parsing, and transaction imports to later versions.
-* **Rationale**: Lowers the privacy risk profile and keeps Version 0.1 scope highly achievable as a manual entry MVP.
+* **Context**: Direct online banking credentials and open banking APIs introduce high regulatory burden and credential risk.
+* **Decision**: Defer direct online banking API access and automated payment execution.
+* **Rationale**: Protects user bank credentials and keeps Version 0.1 legally compliant under BNM and PDPA guidelines.
+
+---
+
+## ADR-013: Adopt Option A MVP Scope (CSV/PDF Imports & Payment Detection)
+* **Status**: Approved
+* **Context**: Users need an easy way to onboard recurring expenses without typing every single item manually.
+* **Decision**: Include CSV parsing (Papa Parse), text-based PDF extraction (PDF.js), image OCR (Tesseract.js), and candidate recurring payment detection in the Version 0.1 MVP scope.
+* **Rationale**: Provides immediate utility for users uploading bank or card statements, while maintaining human-in-the-loop confirmation before saving active subscriptions.
+
+---
+
+## ADR-014: Enforce Domain-Driven Clean Architecture Layout
+* **Status**: Approved
+* **Context**: Mixing business logic inside UI pages or scattering direct Supabase/AI calls makes the codebase fragile and hard to test.
+* **Decision**: Organize application logic under `features/` domain modules (`features/scoring/`, `features/imports/`, `features/subscriptions/`, etc.) with strict 3-tier layering (UI $\rightarrow$ Domain $\rightarrow$ Infrastructure Adapters).
+* **Rationale**: Isolates business logic from Next.js framework code, enables clean unit testing, and enforces clear security boundaries.
