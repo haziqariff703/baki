@@ -1,0 +1,24 @@
+{
+  "Common": {
+    "Subscription": "Subscription",
+    "RenewalDate": "Renewal date",
+    "MonthlyCommitment": "Monthly commitment",
+    "AvailableBalance": "Available balance",
+    "ValueScore": "Value score",
+    "Recommendation": "Recommendation",
+    "Keep": "Keep",
+    "Review": "Review",
+    "Pause": "Pause",
+    "Cancel": "Cancel"
+  },
+  "Index": {
+    "title": "Welcome to Baki",
+    "description": "AI-Assisted Subscription and Personal Cash-Flow Management System",
+    "signIn": "Sign In"
+  },
+  "Dashboard": {
+    "title": "Dashboard",
+    "emptyState": "No subscriptions found.",
+    "signOut": "Sign Out"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "Common": {
+    "Subscription": "Langganan",
+    "RenewalDate": "Tarikh pembaharuan",
+    "MonthlyCommitment": "Komitmen bulanan",
+    "AvailableBalance": "Baki tersedia",
+    "ValueScore": "Skor nilai",
+    "Recommendation": "Cadangan",
+    "Keep": "Kekalkan",
+    "Review": "Semak semula",
+    "Pause": "Jeda",
+    "Cancel": "Batalkan"
+  },
+  "Index": {
+    "title": "Selamat datang ke Baki",
+    "description": "Sistem Pengurusan Aliran Tunai Peribadi dan Langganan Berbantukan AI",
+    "signIn": "Log Masuk"
+  },
+  "Dashboard": {
+    "title": "Papan Pemuka",
+    "emptyState": "Tiada langganan dijumpai.",
+    "signOut": "Log Keluar"
+  }
+}
