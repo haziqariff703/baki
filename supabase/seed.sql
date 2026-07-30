@@ -1,0 +1,1 @@
+-- Synthetic Test Fixtures and Seed Data for Local Supabase Development
