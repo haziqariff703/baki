@@ -9,16 +9,47 @@
     "Keep": "Keep",
     "Review": "Review",
     "Pause": "Pause",
-    "Cancel": "Cancel"
+    "Cancel": "Cancel",
+    "English": "English",
+    "Malay": "Bahasa Melayu"
   },
-  "Index": {
-    "title": "Welcome to Baki",
-    "description": "AI-Assisted Subscription and Personal Cash-Flow Management System",
-    "signIn": "Sign In"
-  },
-  "Dashboard": {
-    "title": "Dashboard",
-    "emptyState": "No subscriptions found.",
+  "Nav": {
+    "workspace": "Workspace",
+    "subscriptions": "Subscriptions",
+    "imports": "Import CSV/PDF",
+    "scorer": "Value Scorer",
+    "reminders": "Reminders",
+    "privacy": "Privacy & Export",
+    "settings": "Settings",
+    "signIn": "Sign In",
     "signOut": "Sign Out"
+  },
+  "Landing": {
+    "badge": "Privacy-First • Deterministic AI Workflow",
+    "heroTitle": "Master Your Subscriptions & Cash-Flow Effortlessly",
+    "heroSubtitle": "Evaluate recurring bills with transparent weighted scoring, detect hidden subscriptions, and receive deterministic decision safeguards—100% under your control.",
+    "tabEvaluator": "Interactive Value Evaluator",
+    "tabParser": "Statement Parser",
+    "tabOverview": "Live Commitment Demo",
+    "evaluatorTitle": "Test Subscription Value Scoring",
+    "evaluatorSubtitle": "Rate any recurring service from 1 to 5 to compute an audit-proof 0–100 score.",
+    "providerName": "Subscription Name",
+    "monthlyPrice": "Monthly Price (MYR)",
+    "usage": "Usage Frequency",
+    "necessity": "Necessity",
+    "affordability": "Affordability",
+    "uniqueness": "Uniqueness",
+    "satisfaction": "Satisfaction",
+    "calculateBtn": "Calculate Score & Recommendation",
+    "resultScore": "Calculated Value Score",
+    "resultAction": "Recommended Decision",
+    "feature1Title": "Deterministic Financial Engine",
+    "feature1Desc": "No AI hallucinations for math. Pure TypeScript scoring ensures 100% repeatable, explainable results.",
+    "feature2Title": "Document & Statement Import",
+    "feature2Desc": "Extract recurring candidate transactions from bank CSVs and text-based PDFs with Papa Parse & PDF.js.",
+    "feature3Title": "5-Pillar Score Matrix",
+    "feature3Desc": "Balance usage, necessity, affordability, uniqueness, and satisfaction before deciding to keep or cancel.",
+    "feature4Title": "Privacy-by-Design & PDPA Compliance",
+    "feature4Desc": "Zero direct banking logins required. PostgreSQL Row Level Security (RLS) protects user records."
   }
 }

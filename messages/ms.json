@@ -9,16 +9,47 @@
     "Keep": "Kekalkan",
     "Review": "Semak semula",
     "Pause": "Jeda",
-    "Cancel": "Batalkan"
+    "Cancel": "Batalkan",
+    "English": "English",
+    "Malay": "Bahasa Melayu"
   },
-  "Index": {
-    "title": "Selamat datang ke Baki",
-    "description": "Sistem Pengurusan Aliran Tunai Peribadi dan Langganan Berbantukan AI",
-    "signIn": "Log Masuk"
-  },
-  "Dashboard": {
-    "title": "Papan Pemuka",
-    "emptyState": "Tiada langganan dijumpai.",
+  "Nav": {
+    "workspace": "Ruang Kerja",
+    "subscriptions": "Langganan",
+    "imports": "Import CSV/PDF",
+    "scorer": "Penilai Nilai",
+    "reminders": "Peringatan",
+    "privacy": "Privasi & Eksport",
+    "settings": "Tetapan",
+    "signIn": "Log Masuk",
     "signOut": "Log Keluar"
+  },
+  "Landing": {
+    "badge": "Privasi Diutamakan • Aliran Kerja AI Deterministik",
+    "heroTitle": "Kuasai Komitmen Langganan & Aliran Tunai Anda",
+    "heroSubtitle": "Nilai bil berulang dengan matriks skor lut sinar, kesan langganan tersembunyi, dan terima panduan keputusan deterministik—100% di bawah kawalan anda.",
+    "tabEvaluator": "Penilai Nilai Interaktif",
+    "tabParser": "Pengimbas Penyata",
+    "tabOverview": "Demo Komitmen Langsung",
+    "evaluatorTitle": "Uji Penilaian Skor Nilai Langganan",
+    "evaluatorSubtitle": "Nilaikan sebarang perkhidmatan berulang dari 1 hingga 5 untuk mengira skor 0–100 yang terbukti.",
+    "providerName": "Nama Langganan",
+    "monthlyPrice": "Harga Bulanan (MYR)",
+    "usage": "Kekerapan Penggunaan",
+    "necessity": "Keperluan",
+    "affordability": "Mampu Milik",
+    "uniqueness": "Keunikan",
+    "satisfaction": "Kepuasan",
+    "calculateBtn": "Kira Skor & Cadangan",
+    "resultScore": "Skor Nilai Dikira",
+    "resultAction": "Keputusan Dicadangkan",
+    "feature1Title": "Enjin Kewangan Deterministik",
+    "feature1Desc": "Tiada manipulasi matematik AI. Pengiraan TypeScript tulen menjamin keputusan 100% tepat dan boleh dijelaskan.",
+    "feature2Title": "Import Dokumen & Penyata",
+    "feature2Desc": "Ekstrak transaksi berulang daripada penyata CSV dan PDF bank dengan Papa Parse & PDF.js.",
+    "feature3Title": "Matriks Skor 5-Teras",
+    "feature3Desc": "Seimbangkan penggunaan, keperluan, kemampuan, keunikan, dan kepuasan sebelum membuat keputusan.",
+    "feature4Title": "Privasi Murni & Mematuhi PDPA",
+    "feature4Desc": "Tiada log masuk perbankan terus diperlukan. Keselamatan PostgreSQL RLS melindungi rekod pengguna."
   }
 }
