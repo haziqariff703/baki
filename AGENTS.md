@@ -376,6 +376,12 @@ Before editing code, an AI coding assistant **must**:
 4. Identify affected security and privacy controls.
 5. Create a clear implementation plan.
 
+### OpenCode Skill Mandates
+Depending on the task domain, the agent **MUST** invoke the following OpenCode skills:
+* **Backend & Business Logic:** MUST invoke the `superpowers` skill (Spec -> Plan -> Test -> Implement -> Verify).
+* **Frontend & UI:** MUST invoke `impeccable craft` and `shadcn-scaffold` for new components.
+* **Database & Schema:** MUST invoke `supabase-schema-sync` for migrations and RLS policies.
+
 During implementation, the agent **must**:
 1. Make the smallest coherent change.
 2. Follow domain layering rules.
@@ -404,7 +410,9 @@ During implementation, the agent **must**:
 
 ## 20. Required Response Format for Coding Agents
 
-For **every** coding task, the AI coding assistant must respond using this exact 6-part framework:
+For **everyday file edits and minor tweaks**, the AI coding assistant **MUST** invoke the `caveman` skill to save tokens (outputting only raw diffs, commands, and brief diagnostics).
+
+For **major architectural tasks only**, the AI coding assistant must respond using this exact 6-part framework:
 
 ### 1. Understanding
 Summarise the requested task and target outcome.
@@ -447,7 +455,7 @@ Specialized instructions exist in subdirectory agent files:
 
 A task is complete only when:
 1. Acceptance criteria are fully satisfied.
-2. Type checking (`npm run build`) passes without errors.
+2. Type checking (`npm run build`) passes without errors. (**MUST run the `typecheck-verify` OpenCode skill before finishing ANY task**).
 3. Linting passes without errors.
 4. Unit/integration tests cover changed business logic.
 5. Inputs are runtime-validated with Zod.
