@@ -8,6 +8,7 @@ import { Link, usePathname } from '@/i18n/routing';
 import { cn } from '@/lib/utils';
 import LanguageSwitcher from './LanguageSwitcher';
 import { useSearch } from './SearchContext';
+import { NotificationBell } from '@/components/layout/NotificationBell';
 
 /**
  * Baki navbar — shadcn-style, two variants.
@@ -318,6 +319,8 @@ export default function Navbar({
             </nav>
           )}
 
+          {!isPublic && <NotificationBell />}
+
           <LanguageSwitcher />
 
           {isPublic ? (
@@ -353,7 +356,7 @@ export default function Navbar({
                 href="/settings"
                 aria-label={tNav('settings')}
                 className={cn(
-                  'inline-flex items-center justify-center w-10 h-10 rounded-full',
+                  'inline-flex items-center justify-center w-10 h-10 rounded-xl',
                   'bg-surface-2 border border-border-2 text-text-muted transition-colors',
                   'hover:text-text-primary hover:border-border-3',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',

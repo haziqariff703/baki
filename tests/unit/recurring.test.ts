@@ -14,6 +14,7 @@ import {
   formatAmount,
   formatCadenceEvidence,
   toSubscription,
+  detectRecurringCadence,
   type RecurringCandidate,
 } from '@/features/recurring-detection';
 import { senToMyr, myrToSen } from '@/lib/money';
@@ -243,5 +244,47 @@ describe('Zod trust boundary (§7)', () => {
   it('candidateEditSchema requires at least one field', () => {
     expect(() => candidateEditSchema.parse({})).toThrow();
     expect(() => candidateEditSchema.parse({ merchantName: 'Netflix' })).not.toThrow();
+  });
+});
+
+describe('detectRecurringCadence (§2.1 deterministic cadence detection)', () => {
+  it('detects monthly recurring subscriptions from multiple transactions', () => {
+    const transactions = [
+      { id: '1', merchantName: 'Spotify', amountSen: 1590, transactionDate: '2026-06-01T00:00:00.000Z' },
+      { id: '2', merchantName: 'Spotify', amountSen: 1590, transactionDate: '2026-07-01T00:00:00.000Z' },
+      { id: '3', merchantName: 'Spotify', amountSen: 1590, transactionDate: '2026-08-01T00:00:00.000Z' },
+      { id: '4', merchantName: 'One-off Mamak', amountSen: 1200, transactionDate: '2026-08-02T00:00:00.000Z' },
+    ];
+
+    const candidates = detectRecurringCadence(transactions);
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0].merchantName).toBe('Spotify');
+    expect(candidates[0].amountSen).toBe(1590);
+    expect(candidates[0].occurrenceCount).toBe(3);
+    expect(candidates[0].intervalDays).toBeGreaterThanOrEqual(28);
+    expect(candidates[0].intervalDays).toBeLessThanOrEqual(31);
+  });
+
+  it('ignores non-subscription transactions with fewer than 2 occurrences', () => {
+    const transactions = [
+      { id: '1', merchantName: 'GrabFood', amountSen: 2500, transactionDate: '2026-08-01T00:00:00.000Z' },
+      { id: '2', merchantName: 'Pasar Malam Setapak', amountSen: 1250, transactionDate: '2026-08-14T00:00:00.000Z' },
+    ];
+
+    const candidates = detectRecurringCadence(transactions);
+    expect(candidates).toHaveLength(0);
+  });
+
+  it('detects known catalog subscriptions even from a single-month statement', () => {
+    const transactions = [
+      { id: '1', merchantName: 'SPTF*SPOTIFY MALAYSIA', amountSen: 1590, transactionDate: '2026-08-01T00:00:00.000Z' },
+      { id: '2', merchantName: 'NETFLIX COM MY', amountSen: 4500, transactionDate: '2026-08-03T00:00:00.000Z' },
+      { id: '3', merchantName: 'CELCOMDIGI POSTPAID BILL', amountSen: 6000, transactionDate: '2026-08-05T00:00:00.000Z' },
+      { id: '4', merchantName: 'PASAR MALAM SETAPAK', amountSen: 1250, transactionDate: '2026-08-14T00:00:00.000Z' },
+    ];
+
+    const candidates = detectRecurringCadence(transactions);
+    expect(candidates).toHaveLength(3);
+    expect(candidates.map((c) => c.merchantName)).toEqual(['Spotify', 'Netflix', 'CelcomDigi']);
   });
 });

@@ -10,11 +10,14 @@
  * DESIGN.md tokens: Ledger-rule list, mono currency, AA contrast, zero emojis.
  */
 
+import React, { useState, useEffect } from 'react';
 import { useTranslations } from 'next-intl';
-import { GraduationCap, ExternalLink, ShieldCheck } from 'lucide-react';
+import { GraduationCap, ExternalLink, ShieldCheck, Building2 } from 'lucide-react';
 import type { StudentSavingsSummary } from '@/features/student-optimizer';
-import { MerchantLogo } from '@/components/shared/MerchantLogo';
 import { senToMyr } from '@/lib/money';
+import { BrandLogo } from '@/components/subscriptions/BrandLogo';
+import { resolveUniversityDomain } from '@/features/settings/domainExtractor';
+import type { UserProfile } from '@/lib/validation/profile';
 
 interface StudentSavingsCardProps {
   readonly summary: StudentSavingsSummary;
@@ -22,30 +25,43 @@ interface StudentSavingsCardProps {
 
 export function StudentSavingsCard({ summary }: StudentSavingsCardProps) {
   const t = useTranslations('Subscriptions.studentSavings');
+  const [profile, setProfile] = useState<UserProfile | null>(null);
 
-  if (summary.count === 0) {
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('baki_user_profile_v1');
+      if (stored) {
+        setProfile(JSON.parse(stored));
+      }
+    } catch {}
+  }, []);
+
+  if (summary.count === 0 || summary.opportunities.length === 0) {
     return null;
   }
 
+  const universityInfo = profile?.email
+    ? resolveUniversityDomain(profile.email)
+    : profile?.universityDomain
+    ? resolveUniversityDomain(profile.universityDomain)
+    : null;
+
   return (
-    <section
-      aria-labelledby="student-savings-heading"
-      className="bg-surface-1 border border-border-2 rounded-xl p-5 sm:p-6 space-y-4"
-    >
+    <div className="rounded-xl border border-status-emerald-border bg-status-emerald-surface/30 p-4 sm:p-5 space-y-4">
       {/* Header */}
-      <div className="flex items-start justify-between gap-4 pb-3 border-b border-border-1 flex-wrap">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <GraduationCap className="w-4 h-4 text-accent" aria-hidden="true" />
-            <h2
-              id="student-savings-heading"
-              className="text-sm font-semibold text-text-primary"
-            >
-              {t('title')}
-            </h2>
-            <span className="text-xs font-mono font-medium px-2.5 py-0.5 rounded-full bg-accent-subtle text-accent border border-accent-border">
-              {t('annualSavingsBadge', { amount: senToMyr(summary.totalAnnualSavingsSen) })}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="space-y-0.5">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="p-1.5 rounded-lg bg-status-emerald-surface text-status-emerald-text border border-status-emerald-border/60 flex items-center justify-center">
+              <GraduationCap className="w-4 h-4" aria-hidden="true" />
             </span>
+            <h3 className="text-sm font-semibold text-text-primary">{t('title')}</h3>
+            {universityInfo?.isEdu && universityInfo.institutionName && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-medium bg-surface-1 text-status-emerald-text border-status-emerald-border">
+                <Building2 className="w-3 h-3 text-status-emerald-text" aria-hidden="true" />
+                <span>{universityInfo.institutionName}</span>
+              </span>
+            )}
           </div>
           <p className="text-xs text-text-muted">{t('subtitle')}</p>
         </div>
@@ -62,9 +78,8 @@ export function StudentSavingsCard({ summary }: StudentSavingsCardProps) {
               {/* Top row: Logo + Merchant + Savings pill */}
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2.5 min-w-0">
-                  <MerchantLogo
-                    name={opp.merchantName}
-                    domain={opp.domain}
+                  <BrandLogo
+                    merchantName={opp.merchantName}
                     size={28}
                   />
                   <div className="min-w-0">
@@ -114,6 +129,6 @@ export function StudentSavingsCard({ summary }: StudentSavingsCardProps) {
           </li>
         ))}
       </ul>
-    </section>
+    </div>
   );
 }

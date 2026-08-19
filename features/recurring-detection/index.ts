@@ -13,6 +13,8 @@ export {
   formatCadenceEvidence,
   nextChargeAfterCycle,
   toSubscription,
+  detectRecurringCadence,
+  type DetectableTransaction,
 } from './logic';
 export { detectPriceCreep } from './priceCreep';
 export { SupabaseRecurringCandidateRepository } from './repository';

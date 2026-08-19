@@ -66,6 +66,9 @@ describeRls('consent + audit + export RLS (dual-user)', () => {
     if (signB.error) throw new Error(`User B sign-in failed: ${signB.error.message}`);
     uidA = signA.data.user!.id;
     uidB = signB.data.user!.id;
+
+    // PostgREST JWT issued-at clock-skew guard
+    await new Promise((resolve) => setTimeout(resolve, 1200));
   });
 
   afterAll(async () => {

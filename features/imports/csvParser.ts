@@ -45,13 +45,57 @@ export interface CsvParseResult {
  * columns are ignored.
  */
 const HEADER_ALIASES: Record<'merchantName' | 'amountSen' | 'transactionDate', readonly string[]> = {
-  merchantName: ['merchant', 'merchant name', 'description', 'name', 'payee', 'narrative'],
-  amountSen: ['amount', 'rm', 'myr', 'value', 'amount (rm)', 'amount(myr)'],
-  transactionDate: ['date', 'transaction date', 'txn date', 'transaction', 'posted date'],
+  merchantName: [
+    'merchant',
+    'merchant name',
+    'description',
+    'name',
+    'payee',
+    'narrative',
+    'merchant_name',
+    'transaction description',
+    'transaction details',
+    'details',
+    'item',
+  ],
+  amountSen: [
+    'amount',
+    'rm',
+    'myr',
+    'value',
+    'amount (rm)',
+    'amount(rm)',
+    'amount (myr)',
+    'amount(myr)',
+    'amount_myr',
+    'amount_sen',
+    'amount (sen)',
+    'amount(sen)',
+    'debit',
+    'debit (myr)',
+    'debit (rm)',
+    'debit amount',
+    'txn amount',
+  ],
+  transactionDate: [
+    'date',
+    'transaction date',
+    'txn date',
+    'transaction',
+    'posted date',
+    'transaction_date',
+    'date posted',
+    'date_posted',
+    'posting date',
+  ],
 };
 
 function normalizeHeader(header: string): string {
-  return header.trim().toLowerCase().replace(/\s+/g, ' ');
+  return header
+    .replace(/^\uFEFF/, '') // Strip UTF-8 Byte Order Mark (BOM)
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
 }
 
 function resolveField(header: string, canonical: keyof typeof HEADER_ALIASES): boolean {
@@ -60,12 +104,15 @@ function resolveField(header: string, canonical: keyof typeof HEADER_ALIASES): b
 }
 
 /**
- * Convert a raw amount cell to integer sen. Accepts "15.90", "1590", "15.9".
+ * Convert a raw amount cell to integer sen. Accepts "15.90", "1590", "15.9", "RM 15.90".
  * Returns null if it is not a positive, well-formed MYR amount.
  */
 function amountCellToSen(raw: unknown): number | null {
   if (typeof raw !== 'string' && typeof raw !== 'number') return null;
-  const text = String(raw).trim();
+  const text = String(raw)
+    .trim()
+    .replace(/^(?:RM|MYR)\s*/i, '')
+    .replace(/,/g, '');
   return myrToSen(text);
 }
 

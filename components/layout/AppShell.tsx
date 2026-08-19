@@ -43,7 +43,11 @@ interface AppShellProps {
 let collapsedSnapshot: boolean | null = null;
 const collapsedListeners = new Set<() => void>();
 
-function readCollapsed(): boolean {
+function getServerSnapshot(): boolean {
+  return false;
+}
+
+function getClientSnapshot(): boolean {
   if (collapsedSnapshot !== null) return collapsedSnapshot;
   let value = false;
   if (typeof window !== 'undefined') {
@@ -76,7 +80,7 @@ function setCollapsed(next: boolean): void {
 
 export function AppShell({ title, children }: AppShellProps) {
   const tDash = useTranslations('Dashboard');
-  const collapsed = useSyncExternalStore(subscribeCollapsed, readCollapsed, readCollapsed);
+  const collapsed = useSyncExternalStore(subscribeCollapsed, getClientSnapshot, getServerSnapshot);
 
   function handleToggle() {
     setCollapsed(!collapsed);

@@ -201,4 +201,46 @@ export class SupabaseRecurringCandidateRepository
     }
     return subscriptionToDomain(row);
   }
+
+  async insertMany(
+    userId: string,
+    candidates: readonly Omit<RecurringCandidate, 'id' | 'status' | 'detectedAt'>[],
+  ): Promise<readonly RecurringCandidate[]> {
+    if (candidates.length === 0) return [];
+
+    // Filter out candidates that already exist as pending for this user to avoid duplicates
+    const { data: existing } = await this.client
+      .from('recurring_candidates')
+      .select('merchant_name, status')
+      .eq('user_id', userId)
+      .eq('status', 'pending');
+
+    const existingNames = new Set(
+      (existing ?? []).map((e: { merchant_name: string }) => e.merchant_name.toLowerCase()),
+    );
+
+    const now = new Date().toISOString();
+    const rows = candidates
+      .filter((c) => !existingNames.has(c.merchantName.toLowerCase()))
+      .map((c) => ({
+        user_id: userId,
+        merchant_name: c.merchantName,
+        amount_sen: c.amountSen,
+        occurrence_count: c.occurrenceCount,
+        interval_days: c.intervalDays,
+        ai_confidence: c.aiConfidence,
+        detected_at: now,
+        status: 'pending' as const,
+      }));
+
+    if (rows.length === 0) return [];
+
+    const { data, error } = await this.client
+      .from('recurring_candidates')
+      .insert(rows)
+      .select('*');
+
+    if (error) throw error;
+    return (data as CandidateRow[]).map(toDomain);
+  }
 }

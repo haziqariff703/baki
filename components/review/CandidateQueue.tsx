@@ -101,12 +101,12 @@ export function CandidateQueue({ initialCandidates }: QueueProps) {
     });
   }, [pending, sortBy]);
 
-  // Ensure selectedIndex stays valid when list changes
+  const safeSelectedIndex = Math.min(selectedIndex, Math.max(0, sortedPending.length - 1));
+
+  // Keep state in sync if parent server props revalidate or hydrate
   useEffect(() => {
-    if (selectedIndex >= sortedPending.length && sortedPending.length > 0) {
-      setSelectedIndex(sortedPending.length - 1);
-    }
-  }, [sortedPending.length, selectedIndex]);
+    setCandidates(initialCandidates);
+  }, [initialCandidates]);
 
   // Auto-dismiss the undo toast after ~5s
   useEffect(() => {
@@ -184,7 +184,7 @@ export function CandidateQueue({ initialCandidates }: QueueProps) {
       }
       if (sortedPending.length === 0) return;
 
-      const current = sortedPending[Math.min(selectedIndex, sortedPending.length - 1)];
+      const current = sortedPending[safeSelectedIndex];
       if (!current) return;
 
       if (e.key === 'y' || e.key === 'Y' || (e.key === 'Enter' && !editing)) {
@@ -207,10 +207,10 @@ export function CandidateQueue({ initialCandidates }: QueueProps) {
         );
       } else if (e.key === 'j' || e.key === 'J' || e.key === 'ArrowDown') {
         e.preventDefault();
-        setSelectedIndex((i) => Math.min(i + 1, sortedPending.length - 1));
+        setSelectedIndex(Math.min(safeSelectedIndex + 1, sortedPending.length - 1));
       } else if (e.key === 'k' || e.key === 'K' || e.key === 'ArrowUp') {
         e.preventDefault();
-        setSelectedIndex((i) => Math.max(i - 1, 0));
+        setSelectedIndex(Math.max(safeSelectedIndex - 1, 0));
       } else if (e.key === 'z' || e.key === 'Z' || e.key === 'u' || e.key === 'U') {
         if (toast) {
           e.preventDefault();
@@ -221,7 +221,7 @@ export function CandidateQueue({ initialCandidates }: QueueProps) {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [sortedPending, selectedIndex, editing, toast, assignedCategories]);
+  }, [sortedPending, safeSelectedIndex, editing, toast, assignedCategories]);
 
   const hintColor: Record<string, string> = {
     likely_recurring: 'text-status-emerald-text',
@@ -375,7 +375,7 @@ export function CandidateQueue({ initialCandidates }: QueueProps) {
               const hint = deriveRecommendationHint(c);
               const isEditing = editing?.id === c.id;
               const isCadenceExpanded = expandedCadenceId === c.id;
-              const isFocused = index === selectedIndex;
+              const isFocused = index === safeSelectedIndex;
               const currentCategory = assignedCategories[c.id] ?? 'Entertainment';
 
               return (

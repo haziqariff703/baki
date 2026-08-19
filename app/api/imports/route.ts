@@ -28,6 +28,10 @@ import {
   SupabaseImportRepository,
   SupabaseTransactionRepository,
 } from '@/features/transactions';
+import {
+  detectRecurringCadence,
+  SupabaseRecurringCandidateRepository,
+} from '@/features/recurring-detection';
 
 export const runtime = 'nodejs'; // pdfjs + Buffer require Node
 export const dynamic = 'force-dynamic';
@@ -77,6 +81,9 @@ export async function POST(request: Request) {
 
     // §11 step 3 — ownership enforced by user_id + RLS in repos/storage.
     const supabase = await createServerSupabase();
+    const transactionRepo = new SupabaseTransactionRepository(supabase);
+    const candidateRepo = new SupabaseRecurringCandidateRepository(supabase);
+
     const outcome = await runImport({
       userId: user.id,
       source: sourceFromMime(descriptor.type),
@@ -84,18 +91,33 @@ export async function POST(request: Request) {
       bytes,
       idempotencyKey: parsed.idempotencyKey,
       storage: new SupabaseImportStorage(supabase),
-      transactionRepo: new SupabaseTransactionRepository(supabase),
+      transactionRepo,
       importRepo: new SupabaseImportRepository(supabase),
     });
+
+    // Step 4: Run deterministic recurring cadence detection on user transactions (§2.1)
+    let candidatesCount = 0;
+    try {
+      const history = await transactionRepo.list(user.id);
+      const newCandidates = detectRecurringCadence(history);
+      if (newCandidates.length > 0) {
+        await candidateRepo.insertMany(user.id, newCandidates);
+        candidatesCount = newCandidates.length;
+      }
+    } catch (cadenceErr) {
+      console.error('[imports POST] Cadence detection warning:', cadenceErr);
+    }
 
     // §11 step 5 — sanitized response (no raw file content, no financial figures).
     return NextResponse.json(
       {
+        success: true,
         import: outcome.import,
         rows: outcome.rows,
         errors: outcome.errors,
         truncated: outcome.truncated,
         importedCount: outcome.importedCount,
+        candidatesCount,
       },
       { status: 201 },
     );

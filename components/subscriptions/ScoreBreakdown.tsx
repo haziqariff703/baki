@@ -50,12 +50,12 @@ export function ScoreBreakdown({ breakdown, totalScore }: ScoreBreakdownProps) {
         const fillPct = Math.max(0, Math.min(100, Math.round(contribution)));
         const label = t(id);
         return (
-          <div key={id} className="flex items-center gap-3">
+          <div key={id} className="flex items-center gap-2 sm:gap-3">
             {/* Label + weight stamp */}
-            <span className="w-28 shrink-0 text-xs text-text-secondary truncate">
+            <span className="w-20 sm:w-28 shrink-0 text-xs text-text-secondary truncate">
               {label}
             </span>
-            <span className="w-10 shrink-0 font-mono text-xs text-text-faint">
+            <span className="w-8 sm:w-10 shrink-0 font-mono text-[11px] sm:text-xs text-text-faint">
               {weight}%
             </span>
 
@@ -77,7 +77,7 @@ export function ScoreBreakdown({ breakdown, totalScore }: ScoreBreakdownProps) {
             </span>
 
             {/* Mono value: rating × weight → points */}
-            <span className="w-14 shrink-0 text-right font-mono text-xs text-text-primary">
+            <span className="w-10 sm:w-12 shrink-0 text-right font-mono text-xs text-text-primary">
               {contribution.toFixed(1)}
             </span>
           </div>

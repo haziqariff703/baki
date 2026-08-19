@@ -13,7 +13,14 @@ import {
   MAX_UPLOAD_SIZE_BYTES,
 } from '@/lib/validation';
 import { runImport, IMPORT_PARSER_VERSION } from '@/features/imports';
-import type { ImportRecord, Transaction } from '@/features/transactions';
+import type {
+  ImportInsert,
+  ImportRecord,
+  ImportRepository,
+  Transaction,
+  TransactionInsert,
+  TransactionRepository,
+} from '@/features/transactions';
 
 function sampleImportRecord(overrides: Partial<ImportRecord> = {}): ImportRecord {
   return {
@@ -96,21 +103,29 @@ describe('runImport orchestration (§12 parse→validate→persist→purge)', ()
     const upload = vi.fn(async (_u: string, _e: string, _d: Uint8Array) => `${_u}/abc.csv`);
     const remove = vi.fn(async () => {});
     const markPurged = vi.fn(async () => {});
-    const transactionRepo = {
-      insertMany: vi.fn(async (_u: string, rows: { merchantName: string }[]) => {
-        persisted.push(...rows.map((r, i) => ({ id: `tx-${i}`, merchantName: r.merchantName, amountSen: 0, transactionDate: '', source: 'csv' as const, importId: null, createdAt: '' })));
-        return persisted;
-      }),
-    };
-    const importRepo = {
-      create: vi.fn(async (_u: string, input: Record<string, unknown>) => {
-        const rec = sampleImportRecord({ ...input });
-        created.push(rec);
-        return rec;
-      }),
-      findByKey: vi.fn(async () => null),
-      markPurged,
-    };
+    const insertMany = vi.fn(async (_u: string, rows: readonly TransactionInsert[]) => {
+      persisted.push(
+        ...rows.map((r, i) => ({
+          id: `tx-${i}`,
+          merchantName: r.merchantName,
+          amountSen: r.amountSen,
+          transactionDate: r.transactionDate,
+          source: r.source,
+          importId: r.importId,
+          createdAt: '2026-08-01T00:00:00.000Z',
+        })),
+      );
+      return persisted;
+    });
+    const list = vi.fn(async () => persisted);
+    const create = vi.fn(async (_u: string, input: ImportInsert) => {
+      const rec = sampleImportRecord({ ...input });
+      created.push(rec);
+      return rec;
+    });
+    const findByKey = vi.fn(async (_u: string, _k: string) => null as ImportRecord | null);
+    const transactionRepo = { insertMany, list };
+    const importRepo = { create, findByKey, markPurged };
     return { created, persisted, upload, remove, markPurged, transactionRepo, importRepo };
   }
 

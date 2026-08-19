@@ -379,7 +379,7 @@ Before editing code, an AI coding assistant **must**:
 ### OpenCode Skill Mandates
 Depending on the task domain, the agent **MUST** invoke the following OpenCode skills:
 * **Backend & Business Logic:** MUST invoke the `superpowers` skill (Spec -> Plan -> Test -> Implement -> Verify).
-* **Frontend & UI:** MUST invoke `impeccable craft` and `shadcn-scaffold` for new components.
+* **Frontend & UI:** MUST invoke `ui-ux-pro-max`, `impeccable craft`, and `shadcn-scaffold` for new components and responsive layouts.
 * **Database & Schema:** MUST invoke `supabase-schema-sync` for migrations and RLS policies.
 
 During implementation, the agent **must**:

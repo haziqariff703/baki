@@ -90,6 +90,21 @@ const CRITERIA: readonly CriterionId[] = [
 
 const CYCLES = billingCycleSchema.options;
 
+const POPULAR_BRANDS = [
+  { name: 'Spotify', defaultAmount: '15.90' },
+  { name: 'Netflix', defaultAmount: '45.00' },
+  { name: 'YouTube Premium', defaultAmount: '17.90' },
+  { name: 'iCloud+', defaultAmount: '3.90' },
+  { name: 'ChatGPT Plus', defaultAmount: '99.00' },
+  { name: 'CelcomDigi', defaultAmount: '60.00' },
+  { name: 'Maxis', defaultAmount: '98.00' },
+  { name: 'Unifi', defaultAmount: '89.00' },
+  { name: 'Canva Pro', defaultAmount: '49.90' },
+  { name: 'Anytime Fitness', defaultAmount: '159.00' },
+  { name: 'Apple Music', defaultAmount: '16.90' },
+  { name: 'Disney+ Hotstar', defaultAmount: '24.90' },
+] as const;
+
 /* -------------------------------------------------------------------------- */
 /*  Criterion segmented control                                                */
 /* -------------------------------------------------------------------------- */
@@ -278,6 +293,11 @@ function FormPanel({
             {t('formMerchant')}
           </label>
           <div className="relative">
+            {merchantName.trim() && (
+              <div className="absolute left-3 top-1/2 -translate-y-1/2 flex items-center pointer-events-none z-10">
+                <BrandLogo merchantName={merchantName} size={20} />
+              </div>
+            )}
             <input
               ref={firstFieldRef}
               id="sub-merchant"
@@ -295,7 +315,8 @@ function FormPanel({
               aria-expanded={showSuggestions && suggestions.length > 0}
               aria-controls="sub-merchant-suggestions"
               className={cn(
-                'w-full bg-surface-2 text-text-primary text-sm rounded-xl px-3 py-2 border transition-colors placeholder:text-text-faint focus:outline-none focus:ring-1',
+                'w-full bg-surface-2 text-text-primary text-sm rounded-xl py-2 border transition-colors placeholder:text-text-faint focus:outline-none focus:ring-1',
+                merchantName.trim() ? 'pl-9 pr-3' : 'px-3',
                 errors.merchantName
                   ? 'border-status-rose-border focus:border-status-rose-border focus:ring-status-rose-border'
                   : 'border-border-2 focus:border-accent focus:ring-accent',
@@ -307,7 +328,7 @@ function FormPanel({
                 id="sub-merchant-suggestions"
                 role="listbox"
                 aria-label={t('brandSuggestionsLabel')}
-                className="absolute z-20 mt-1 w-full bg-surface-1 border border-border-2 rounded-xl shadow-xl max-h-56 overflow-y-auto"
+                className="absolute z-20 mt-1 w-full bg-surface-1 border border-border-2 rounded-xl shadow-xl max-h-56 overflow-y-auto divide-y divide-border-1"
               >
                 {suggestions.map((s) => (
                   <li key={s.slug} role="option" aria-selected="false">
@@ -321,8 +342,8 @@ function FormPanel({
                       }}
                       className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-sm text-text-primary hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent transition-colors"
                     >
-                      <BrandLogo merchantName={s.name} size={20} />
-                      <span className="truncate">{s.name}</span>
+                      <BrandLogo merchantName={s.name} size={22} />
+                      <span className="font-medium truncate">{s.name}</span>
                     </button>
                   </li>
                 ))}
@@ -333,6 +354,40 @@ function FormPanel({
             <p id="sub-merchant-error" role="alert" className="text-xs text-status-rose-text">
               {errors.merchantName}
             </p>
+          )}
+
+          {/* Quick Popular Brand Registry Selector */}
+          {!editing && (
+            <div className="space-y-1.5 pt-1">
+              <span className="text-[11px] font-mono uppercase tracking-wider text-text-faint block">
+                Popular Services
+              </span>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {POPULAR_BRANDS.map((brand) => {
+                  const isSelected = merchantName.toLowerCase() === brand.name.toLowerCase();
+                  return (
+                    <button
+                      key={brand.name}
+                      type="button"
+                      onClick={() => {
+                        setMerchantName(brand.name);
+                        if (!amountMyr) setAmountMyr(brand.defaultAmount);
+                        setShowSuggestions(false);
+                      }}
+                      className={cn(
+                        'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-medium transition-colors cursor-pointer',
+                        isSelected
+                          ? 'border-accent bg-accent/15 text-text-primary font-semibold'
+                          : 'border-border-2 bg-surface-2 hover:bg-surface-3 text-text-secondary hover:text-text-primary',
+                      )}
+                    >
+                      <BrandLogo merchantName={brand.name} size={14} />
+                      <span>{brand.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           )}
         </div>
 

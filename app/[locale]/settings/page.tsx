@@ -1,16 +1,49 @@
-import { useTranslations } from 'next-intl';
-import { User, Mail, Globe, ShieldCheck, ArrowRight } from 'lucide-react';
+import { getTranslations } from 'next-intl/server';
+import { Globe, ShieldCheck, ArrowRight, Lock } from 'lucide-react';
 import { AppShell } from '@/components/layout/AppShell';
 import LanguageSwitcher from '@/components/shared/LanguageSwitcher';
+import { AccountProfileSettings } from '@/components/settings/AccountProfileSettings';
 import { Link } from '@/i18n/routing';
+import { createClient } from '@/lib/supabase/server';
 
 /**
- * Settings shell — minimal account surface. Profile fields are placeholders
- * (non-functional) until auth lands; the language control and the privacy
- * panel link are live. Ledger-Rule row anatomy throughout (DESIGN.md §6).
+ * Settings & Account Configuration Page.
+ *
+ * Provides editable user profile attributes (identity, student tier,
+ * monthly budget in sen, alert lead time, ledger preference) with automatic
+ * domain extraction from Google OAuth or email sign-in (§1.1 / §2.3 / §8.1).
  */
-export default function SettingsPage() {
-  const t = useTranslations('Settings');
+export default async function SettingsPage() {
+  const t = await getTranslations('Settings');
+
+  let initialUser: {
+    email?: string | null;
+    displayName?: string | null;
+    avatarUrl?: string | null;
+  } | undefined = undefined;
+
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (user) {
+      initialUser = {
+        email: user.email,
+        displayName:
+          user.user_metadata?.full_name ||
+          user.user_metadata?.name ||
+          user.email?.split('@')[0],
+        avatarUrl:
+          user.user_metadata?.avatar_url ||
+          user.user_metadata?.picture ||
+          null,
+      };
+    }
+  } catch (err) {
+    // Guest or offline session fallback
+  }
 
   return (
     <AppShell title={t('title')}>
@@ -22,36 +55,15 @@ export default function SettingsPage() {
           <p className="text-sm text-text-muted">{t('subtitle')}</p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-          {/* Left Column: Account & Language */}
-          <div className="space-y-6">
-            {/* Account */}
-            <section aria-labelledby="account-heading" className="space-y-3">
-              <h2
-                id="account-heading"
-                className="text-xs font-mono uppercase tracking-wider text-text-faint"
-              >
-                {t('accountHeading')}
-              </h2>
-              <ul className="divide-y divide-border-1 border border-border-1 rounded-xl bg-surface-1">
-                <li className="flex items-center justify-between gap-4 px-5 py-4">
-                  <span className="flex items-center gap-3 text-sm text-text-secondary">
-                    <User className="w-4 h-4 text-text-faint" aria-hidden="true" />
-                    {t('displayName')}
-                  </span>
-                  <span className="text-sm text-text-muted">{t('notSet')}</span>
-                </li>
-                <li className="flex items-center justify-between gap-4 px-5 py-4">
-                  <span className="flex items-center gap-3 text-sm text-text-secondary">
-                    <Mail className="w-4 h-4 text-text-faint" aria-hidden="true" />
-                    {t('email')}
-                  </span>
-                  <span className="text-sm text-text-muted">{t('notSet')}</span>
-                </li>
-              </ul>
-            </section>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          {/* Main Column: Interactive Profile & Preferences (8 cols) */}
+          <div className="lg:col-span-8 space-y-6">
+            <AccountProfileSettings initialUser={initialUser} />
+          </div>
 
-            {/* Language */}
+          {/* Side Column: Language & Privacy Governance (4 cols) */}
+          <div className="lg:col-span-4 space-y-6">
+            {/* Language & Locale */}
             <section aria-labelledby="language-heading" className="space-y-3">
               <h2
                 id="language-heading"
@@ -61,18 +73,16 @@ export default function SettingsPage() {
               </h2>
               <div className="border border-border-1 rounded-xl bg-surface-1 px-5 py-4">
                 <div className="flex items-center justify-between gap-4">
-                  <span className="flex items-center gap-3 text-sm text-text-secondary">
+                  <span className="flex items-center gap-2.5 text-xs sm:text-sm font-medium text-text-secondary">
                     <Globe className="w-4 h-4 text-text-faint" aria-hidden="true" />
-                    {t('language')}
+                    <span>{t('language')}</span>
                   </span>
                   <LanguageSwitcher />
                 </div>
               </div>
             </section>
-          </div>
 
-          {/* Right Column: Privacy Panel Link */}
-          <div className="space-y-6">
+            {/* Privacy & Data Control Panel */}
             <section aria-labelledby="privacy-heading" className="space-y-3">
               <h2
                 id="privacy-heading"
@@ -90,7 +100,7 @@ export default function SettingsPage() {
                     aria-hidden="true"
                   />
                   <div className="min-w-0 space-y-1">
-                    <span className="block text-sm font-medium text-text-primary">
+                    <span className="block text-sm font-semibold text-text-primary">
                       {t('privacyLink')}
                     </span>
                     <span className="block text-xs text-text-muted leading-relaxed">
@@ -104,6 +114,18 @@ export default function SettingsPage() {
                 />
               </Link>
             </section>
+
+            {/* Security & Audit Summary */}
+            <div className="p-4 rounded-xl border border-border-1 bg-surface-2/40 space-y-2">
+              <div className="flex items-center gap-2 text-xs font-semibold text-text-primary">
+                <Lock className="w-3.5 h-3.5 text-accent" aria-hidden="true" />
+                <span>Malaysian PDPA 2010 Protected</span>
+              </div>
+              <p className="text-[11px] text-text-muted leading-relaxed">
+                Your data stays strictly under your control. We never share personal
+                financial records or sell analytical telemetry to third-party data brokers.
+              </p>
+            </div>
           </div>
         </div>
       </div>

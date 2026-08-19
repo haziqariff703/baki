@@ -434,17 +434,16 @@ export default async function DashboardPage() {
               {t('quickHeading')}
             </h2>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="bg-surface-1 border border-border-1 rounded-xl p-5 flex flex-col justify-between gap-3 opacity-75">
-                <div className="flex items-center gap-2">
-                  <PlusCircle className="w-4 h-4 text-text-muted" aria-hidden="true" />
-                  <span className="text-sm font-medium text-text-primary">
-                    {t('quick.add')}
-                  </span>
-                </div>
-                <p className="text-xs text-text-faint leading-relaxed">
-                  {t('quickAddNote')}
-                </p>
-              </div>
+              <Link
+                href="/subscriptions"
+                className="bg-surface-1 border border-border-1 rounded-xl p-5 flex items-center gap-2 hover:border-border-3 hover:bg-surface-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              >
+                <PlusCircle className="w-4 h-4 text-text-muted" aria-hidden="true" />
+                <span className="text-sm font-medium text-text-primary">
+                  {t('quick.add')}
+                </span>
+                <ArrowRight className="w-4 h-4 ml-auto text-text-faint" aria-hidden="true" />
+              </Link>
               <Link
                 href="/review"
                 className="bg-surface-1 border border-border-1 rounded-xl p-5 flex items-center gap-2 hover:border-border-3 hover:bg-surface-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
@@ -455,18 +454,16 @@ export default async function DashboardPage() {
                 </span>
                 <ArrowRight className="w-4 h-4 ml-auto text-text-faint" aria-hidden="true" />
               </Link>
-              <span
-                aria-disabled="true"
-                className="bg-surface-1 border border-border-1 rounded-xl p-5 flex items-center gap-2 opacity-50 cursor-not-allowed"
+              <Link
+                href="/imports"
+                className="bg-surface-1 border border-border-1 rounded-xl p-5 flex items-center gap-2 hover:border-border-3 hover:bg-surface-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
               >
-                <UploadCloud className="w-4 h-4 text-text-faint" aria-hidden="true" />
-                <span className="text-sm font-medium text-text-faint">
+                <UploadCloud className="w-4 h-4 text-text-muted" aria-hidden="true" />
+                <span className="text-sm font-medium text-text-primary">
                   {t('quick.import')}
                 </span>
-                <span className="ml-auto font-mono text-[10px] uppercase tracking-wider text-text-faint">
-                  {t('soonBadge')}
-                </span>
-              </span>
+                <ArrowRight className="w-4 h-4 ml-auto text-text-faint" aria-hidden="true" />
+              </Link>
             </div>
           </section>
 

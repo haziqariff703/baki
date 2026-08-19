@@ -69,34 +69,80 @@ const BRAND_SLUGS: Readonly<Record<string, BrandEntry>> = {
   'apple tv+': { slug: 'appletv', hex: LIGHT_NEUTRAL },
   'apple music': { slug: 'applemusic', hex: 'FA243C' },
   'apple arcade': { slug: 'applearcade', hex: LIGHT_NEUTRAL },
+  'apple one': { slug: 'apple', hex: LIGHT_NEUTRAL },
   google: { slug: 'google', hex: '4285F4' },
   'google one': { slug: 'google', hex: '4285F4' },
   'google drive': { slug: 'googledrive', hex: '4285F4' },
   'google play': { slug: 'googleplay', hex: '414141' },
   'google photos': { slug: 'googlephotos', hex: '4285F4' },
   'google gemini': { slug: 'googlegemini', hex: '8E75B2' },
+  'google workspace': { slug: 'google', hex: '4285F4' },
   gmail: { slug: 'gmail', hex: 'EA4335' },
   namecheap: { slug: 'namecheap', hex: 'DE3723' },
   'namecheap domain': { slug: 'namecheap', hex: 'DE3723' },
   github: { slug: 'github', hex: LIGHT_NEUTRAL },
+  'github copilot': { slug: 'githubcopilot', hex: LIGHT_NEUTRAL },
+  gitlab: { slug: 'gitlab', hex: 'FC6D26' },
   notion: { slug: 'notion', hex: LIGHT_NEUTRAL },
   dropbox: { slug: 'dropbox', hex: '0061FF' },
   figma: { slug: 'figma', hex: 'F24E1E' },
   zoom: { slug: 'zoom', hex: '0B5CFF' },
+  slack: { slug: 'slack', hex: '4A154B' },
+  jira: { slug: 'jira', hex: '0052CC' },
+  linear: { slug: 'linear', hex: '5E6AD2' },
+  trello: { slug: 'trello', hex: '0052CC' },
+  asana: { slug: 'asana', hex: 'F06A6A' },
+  miro: { slug: 'miro', hex: 'FFD02F' },
   grammarly: { slug: 'grammarly', hex: '027E6F' },
   claude: { slug: 'claude', hex: 'D97757' },
   anthropic: { slug: 'anthropic', hex: LIGHT_NEUTRAL },
-  // Streaming
+  canva: { slug: 'canva', hex: '00C4CC' },
+  openai: { slug: 'openai', hex: '412991' },
+  'chatgpt plus': { slug: 'openai', hex: '412991' },
+  chatgpt: { slug: 'openai', hex: '412991' },
+  midjourney: { slug: 'midjourney', hex: LIGHT_NEUTRAL },
+  'microsoft 365': { slug: 'microsoft365', hex: 'D83B01' },
+  microsoft: { slug: 'microsoft', hex: '5E5E5E' },
+  onedrive: { slug: 'microsoftonedrive', hex: '0078D4' },
+  teams: { slug: 'microsoftteams', hex: '6264A7' },
+  adobe: { slug: 'adobe', hex: 'FF0000' },
+  'adobe creative cloud': { slug: 'adobecreativecloud', hex: 'DA1F26' },
+  photoshop: { slug: 'adobephotoshop', hex: '31A8FF' },
+  illustrator: { slug: 'adobeillustrator', hex: 'FF9A00' },
+  '1password': { slug: '1password', hex: '0A85EA' },
+  bitwarden: { slug: 'bitwarden', hex: '175DDC' },
+  nordvpn: { slug: 'nordvpn', hex: '4687FF' },
+  surfshark: { slug: 'surfshark', hex: '00D18F' },
+  expressvpn: { slug: 'expressvpn', hex: 'DA3940' },
+  proton: { slug: 'proton', hex: '6D4AFF' },
+  setapp: { slug: 'setapp', hex: LIGHT_NEUTRAL },
+  vercel: { slug: 'vercel', hex: LIGHT_NEUTRAL },
+  supabase: { slug: 'supabase', hex: '3ECF8E' },
+  docker: { slug: 'docker', hex: '2496ED' },
+  cloudflare: { slug: 'cloudflare', hex: 'F38020' },
+  aws: { slug: 'amazonwebservices', hex: 'FF9900' },
+  // Streaming & Media
+  'disney+': { slug: 'disneyplus', hex: '113CCF' },
+  'disney plus': { slug: 'disneyplus', hex: '113CCF' },
+  'prime video': { slug: 'amazonprime', hex: '00A8E1' },
+  'amazon prime': { slug: 'amazonprime', hex: '00A8E1' },
   crunchyroll: { slug: 'crunchyroll', hex: 'FF5E00' },
   astro: { slug: 'astro', hex: 'BC52EE' },
   tidal: { slug: 'tidal', hex: LIGHT_NEUTRAL },
   'hbo max': { slug: 'hbomax', hex: LIGHT_NEUTRAL },
+  hbo: { slug: 'hbo', hex: LIGHT_NEUTRAL },
   max: { slug: 'max', hex: '525252' },
+  twitch: { slug: 'twitch', hex: '9146FF' },
+  audible: { slug: 'audible', hex: 'F8991C' },
+  deezer: { slug: 'deezer', hex: 'FEAA2D' },
+  soundcloud: { slug: 'soundcloud', hex: 'FF5500' },
   // Gaming
   steam: { slug: 'steam', hex: LIGHT_NEUTRAL },
   'epic games': { slug: 'epicgames', hex: '313131' },
   gog: { slug: 'gogdotcom', hex: '86328A' },
   playstation: { slug: 'playstation', hex: '0070D1' },
+  xbox: { slug: 'xbox', hex: '107C10' },
+  nintendo: { slug: 'nintendoswitch', hex: 'E60012' },
   roblox: { slug: 'roblox', hex: LIGHT_NEUTRAL },
   pubg: { slug: 'pubg', hex: 'F4B942' },
   'riot games': { slug: 'riotgames', hex: 'EB0029' },
@@ -104,12 +150,23 @@ const BRAND_SLUGS: Readonly<Record<string, BrandEntry>> = {
   ea: { slug: 'ea', hex: LIGHT_NEUTRAL },
   discord: { slug: 'discord', hex: '5865F2' },
   'discord nitro': { slug: 'discord', hex: '5865F2' },
-  // E-commerce / food / wallet
+  // Fitness / Lifestyle / Telco
+  'anytime fitness': { slug: 'anytimefitness', hex: '652D90' },
+  strava: { slug: 'strava', hex: 'FC4C02' },
+  fitbit: { slug: 'fitbit', hex: '00B0B9' },
+  myfitnesspal: { slug: 'myfitnesspal', hex: '0066EE' },
+  headspace: { slug: 'headspace', hex: 'F47D31' },
+  calm: { slug: 'calm', hex: '0079C2' },
+  medium: { slug: 'medium', hex: LIGHT_NEUTRAL },
+  substack: { slug: 'substack', hex: 'FF6719' },
+  patreon: { slug: 'patreon', hex: 'FF424D' },
+  // E-commerce / food / wallet / Travel
   shopee: { slug: 'shopee', hex: 'EE4D2D' },
   shopeefood: { slug: 'shopee', hex: 'EE4D2D' },
   grab: { slug: 'grab', hex: '00B14F' },
   grabunlimited: { slug: 'grab', hex: '00B14F' },
   foodpanda: { slug: 'foodpanda', hex: 'D70F64' },
+  lazada: { slug: 'lazada', hex: '0F146D' },
   airasia: { slug: 'airasia', hex: 'FF0000' },
   boost: { slug: 'boost', hex: 'F7901E' },
   paypal: { slug: 'paypal', hex: '00457C' },
@@ -162,20 +219,6 @@ const WHITESPACE_RUN = /\s+/g;
  * Normalize a raw bank-statement descriptor into a canonical lowercase brand
  * key for registry lookup. Pure and deterministic — never calls an LLM and
  * never performs a network lookup.
- *
- * Applies, in order:
- *   1. Lowercase + trim.
- *   2. Strip parenthetical/bracketed noise (dates, card last-4, references).
- *   3. Strip leading payment-system tokens (`fpx`, `myr`, `web`).
- *   4. Strip trailing hold markers (`*pending`, `*pending auth`, `*preauth`).
- *   5. Strip country/legal suffixes (`se`, `sg`, `my`, `ltd`, `llc`, `pty`,
- *      `sdn bhd`, `sdn. bhd.`).
- *   6. Strip standalone phone numbers and 10–16 digit card/reference runs.
- *   7. Collapse `*` and internal whitespace to single spaces; trim.
- *
- * The result is a key that can be matched against `BRAND_SLUGS` or
- * `MERCHANT_ALIASES`. It never leaves the client/server boundary as a raw
- * descriptor — only the resolved slug is ever sent to a CDN (privacy, §2.3).
  */
 export function normalizeMerchantToKey(input: string): string {
   let s = input.toLowerCase().trim();
@@ -198,38 +241,58 @@ export function normalizeMerchantToKey(input: string): string {
   // 6 · strip phone numbers and long card/reference runs
   s = s.replace(/\b\d{4,}\b/g, ' ');
 
-  // 7 · collapse `*` and whitespace runs
-  s = s.replace(/\*/g, ' ').replace(WHITESPACE_RUN, ' ').trim();
+  // 7 · collapse `*`, `/`, and whitespace runs
+  s = s.replace(/[*_/#.-]+/g, ' ').replace(WHITESPACE_RUN, ' ').trim();
 
   return s;
 }
 
 /**
  * Deterministic alias table: raw (already-stripped) descriptor key → canonical
- * registry key. Extends `BRAND_SLUGS` without duplicating brand data — an alias
- * points at a key that already exists in the registry (or at a name that will
- * fall to monogram). Keep it small, versioned, and auditable (AGENTS.md §2.1,
- * §2.6).
+ * registry key. Extends `BRAND_SLUGS` without duplicating brand data.
  */
 const MERCHANT_ALIASES: Readonly<Record<string, string>> = {
   'sptf spotify': 'spotify',
+  'sptf spotify malaysia': 'spotify',
+  'spotify malaysia': 'spotify',
   spot: 'spotify',
   netflx: 'netflix',
+  'netflix com': 'netflix',
+  'netflix com my': 'netflix',
+  'netflix my': 'netflix',
+  'apple com bill icloud': 'icloud',
+  'apple com bill': 'apple',
+  'apple bill icloud': 'icloud',
+  'apple one': 'apple one',
+  'anytime fitness bangsar': 'anytime fitness',
+  'anytime fitness mid valley': 'anytime fitness',
+  'openai chatgpt plus subscription': 'chatgpt plus',
+  'openai chatgpt plus': 'chatgpt plus',
+  'openai chatgpt': 'chatgpt',
+  'canva pro annual plan': 'canva',
+  'canva pro': 'canva',
+  'celcomdigi postpaid bill': 'celcom',
+  'celcomdigi postpaid': 'celcom',
+  'maxis mobile postpaid': 'maxis',
+  'maxis postpaid': 'maxis',
   ggrab: 'grab',
   'grab food': 'grab',
   'touch n go': 'touch n go',
   tng: 'touch n go',
   'touchngo': 'touch n go',
+  'tng ewallet': 'touch n go',
   celcom: 'celcom',
   'celcomdigi': 'celcom',
   digi: 'digi',
   maxis: 'maxis',
   'microsoft 365': 'microsoft 365',
   microsoft: 'microsoft 365',
+  'office 365': 'microsoft 365',
   'youtube premium': 'youtube premium',
   'yt premium': 'youtube premium',
   'google one': 'google one',
   'g one': 'google one',
+  'google workspace': 'google workspace',
   shopee: 'shopee',
   'shopeepay': 'shopee',
   viu: 'viu',
@@ -238,11 +301,104 @@ const MERCHANT_ALIASES: Readonly<Record<string, string>> = {
   lazada: 'lazada',
   unifi: 'unifi',
   'tm unifi': 'unifi',
+  'tm unifi postpaid': 'unifi',
+  'unifi postpaid': 'unifi',
+  'telekom malaysia': 'unifi',
   time: 'time',
+  'time internet': 'time',
   hotlink: 'hotlink',
   'u mobile': 'u mobile',
   umobile: 'u mobile',
+  'yes 5g': 'yes 5g',
+  'yes communication': 'yes 5g',
   bigpay: 'bigpay',
+  'disney+ hotstar': 'disney+',
+  'disney hotstar': 'disney+',
+  'disney plus': 'disney+',
+  'amazon prime video': 'prime video',
+  'prime video': 'prime video',
+  'tenaga nasional': 'tnb',
+  tnb: 'tnb',
+  'air selangor': 'air selangor',
+  'indah water': 'indah water',
+};
+
+const BRAND_CANONICAL_NAMES: Readonly<Record<string, string>> = {
+  spotify: 'Spotify',
+  netflix: 'Netflix',
+  youtube: 'YouTube',
+  'youtube premium': 'YouTube Premium',
+  'youtube music': 'YouTube Music',
+  'icloud+': 'iCloud+',
+  icloud: 'iCloud',
+  apple: 'Apple',
+  'apple tv+': 'Apple TV+',
+  'apple music': 'Apple Music',
+  'apple arcade': 'Apple Arcade',
+  'apple one': 'Apple One',
+  google: 'Google',
+  'google one': 'Google One',
+  'google drive': 'Google Drive',
+  'google play': 'Google Play',
+  'google photos': 'Google Photos',
+  'google gemini': 'Google Gemini',
+  'google workspace': 'Google Workspace',
+  gmail: 'Gmail',
+  namecheap: 'Namecheap',
+  'namecheap domain': 'Namecheap',
+  github: 'GitHub',
+  'github copilot': 'GitHub Copilot',
+  gitlab: 'GitLab',
+  notion: 'Notion',
+  dropbox: 'Dropbox',
+  figma: 'Figma',
+  zoom: 'Zoom',
+  slack: 'Slack',
+  jira: 'Jira',
+  linear: 'Linear',
+  trello: 'Trello',
+  asana: 'Asana',
+  miro: 'Miro',
+  grammarly: 'Grammarly',
+  claude: 'Claude',
+  anthropic: 'Anthropic',
+  canva: 'Canva',
+  openai: 'OpenAI',
+  'chatgpt plus': 'ChatGPT Plus',
+  chatgpt: 'ChatGPT',
+  midjourney: 'Midjourney',
+  'microsoft 365': 'Microsoft 365',
+  microsoft: 'Microsoft',
+  adobe: 'Adobe',
+  'adobe creative cloud': 'Adobe Creative Cloud',
+  '1password': '1Password',
+  bitwarden: 'Bitwarden',
+  nordvpn: 'NordVPN',
+  surfshark: 'Surfshark',
+  expressvpn: 'ExpressVPN',
+  proton: 'Proton',
+  setapp: 'Setapp',
+  'anytime fitness': 'Anytime Fitness',
+  maxis: 'Maxis',
+  celcom: 'CelcomDigi',
+  celcomdigi: 'CelcomDigi',
+  digi: 'Digi',
+  'u mobile': 'U Mobile',
+  'yes 5g': 'Yes 5G',
+  shopee: 'Shopee',
+  grab: 'Grab',
+  foodpanda: 'foodpanda',
+  lazada: 'Lazada',
+  touchngo: 'Touch \'n Go',
+  'touch n go': 'Touch \'n Go',
+  unifi: 'Unifi',
+  time: 'TIME Internet',
+  'disney+': 'Disney+ Hotstar',
+  'prime video': 'Amazon Prime Video',
+  astro: 'Astro',
+  tnb: 'TNB (Tenaga Nasional)',
+  'air selangor': 'Air Selangor',
+  'indah water': 'Indah Water',
 };
 
 /**
@@ -273,28 +429,25 @@ export function resolveBrandKey(descriptor: string): string {
  * Example: "Netflix" → "Netflix"; "SPTF*SPOTIFY SE" → "Spotify"; "GGRAB" → "Grab".
  */
 export function canonicalMerchantName(descriptor: string): string {
-  const key = resolveBrandKey(descriptor);
-
-  // Did the descriptor already name a known brand (case-insensitively)? If so,
-  // preserve its original casing so we never mangle "Netflix" → "netflix".
   const strippedOriginal = normalizeMerchantToKey(descriptor);
-  const isDirectBrand = Object.keys(BRAND_SLUGS).some(
-    (name) => name.toLowerCase() === strippedOriginal,
-  );
-  if (isDirectBrand) {
-    // Return the sanitised original (preserves "Netflix", "iCloud+" casing).
+
+  // If descriptor directly names a known brand or alias in our canonical table:
+  const resolvedKey = resolveBrandKey(descriptor);
+  if (BRAND_CANONICAL_NAMES[resolvedKey]) {
+    return BRAND_CANONICAL_NAMES[resolvedKey];
+  }
+
+  if (BRAND_CANONICAL_NAMES[strippedOriginal]) {
+    return BRAND_CANONICAL_NAMES[strippedOriginal];
+  }
+
+  // If descriptor already has mixed/clean casing, preserve original
+  if (descriptor.trim() && /[a-z]/.test(descriptor) && /[A-Z]/.test(descriptor)) {
     return descriptor.trim();
   }
 
-  // Alias matched a known brand (e.g. "sptf spotify" → "spotify")? Use the
-  // canonical registry name so it resolves to a logo with proper casing.
-  const canonicalForAlias = MERCHANT_ALIASES[key];
-  if (canonicalForAlias) {
-    return canonicalMerchantName(canonicalForAlias);
-  }
-
   // Unknown: title-case each word for a clean, readable display name.
-  return key
+  return resolvedKey
     .split(' ')
     .filter(Boolean)
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
@@ -347,7 +500,8 @@ export function searchBrands(query: string): readonly BrandSuggestion[] {
     if (!name.includes(q)) continue;
     if (seen.has(entry.slug)) continue; // de-dupe aliases → same slug
     seen.add(entry.slug);
-    results.push({ name, slug: entry.slug, url: brandUrl(entry) });
+    const displayName = BRAND_CANONICAL_NAMES[name] ?? canonicalMerchantName(name);
+    results.push({ name: displayName, slug: entry.slug, url: brandUrl(entry) });
   }
   return results.sort((a, b) => a.name.localeCompare(b.name));
 }

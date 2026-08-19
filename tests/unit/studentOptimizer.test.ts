@@ -83,6 +83,78 @@ describe('Malaysian Student Discount Optimizer (§2.1 / §8.1)', () => {
     expect(result.totalAnnualSavingsSen).toBe((740 + 800 + 2990) * 12);
   });
 
+  it('detects developer, productivity, and telco youth packages', () => {
+    const subs: readonly SubscriptionSchema[] = [
+      {
+        id: 'sub-msft',
+        merchantName: 'Microsoft 365',
+        amountSen: 2700,
+        cycle: 'monthly',
+        nextChargeDate: '2026-09-01T00:00:00.000Z',
+        usage: 5,
+        necessity: 5,
+        affordability: 3,
+        uniqueness: 4,
+        satisfaction: 4,
+      },
+      {
+        id: 'sub-figma',
+        merchantName: 'Figma',
+        amountSen: 6500,
+        cycle: 'monthly',
+        nextChargeDate: '2026-09-01T00:00:00.000Z',
+        usage: 4,
+        necessity: 4,
+        affordability: 2,
+        uniqueness: 5,
+        satisfaction: 5,
+      },
+      {
+        id: 'sub-celcom',
+        merchantName: 'CelcomDigi Postpaid',
+        amountSen: 6000,
+        cycle: 'monthly',
+        nextChargeDate: '2026-09-01T00:00:00.000Z',
+        usage: 5,
+        necessity: 5,
+        affordability: 4,
+        uniqueness: 3,
+        satisfaction: 4,
+      },
+      {
+        id: 'sub-duo',
+        merchantName: 'Duolingo',
+        amountSen: 2890,
+        cycle: 'monthly',
+        nextChargeDate: '2026-09-01T00:00:00.000Z',
+        usage: 3,
+        necessity: 2,
+        affordability: 4,
+        uniqueness: 3,
+        satisfaction: 4,
+      },
+    ];
+
+    const result = detectStudentSavings(subs, true);
+    expect(result.count).toBe(4);
+
+    // Microsoft 365: saves 2700 sen
+    const msft = result.opportunities.find((o) => o.merchantName === 'Microsoft 365');
+    expect(msft?.monthlySavingsSen).toBe(2700);
+
+    // Figma: saves 6500 sen
+    const figma = result.opportunities.find((o) => o.merchantName === 'Figma');
+    expect(figma?.monthlySavingsSen).toBe(6500);
+
+    // CelcomDigi Pakej Belia: saves 2000 sen
+    const celcom = result.opportunities.find((o) => o.merchantName === 'CelcomDigi');
+    expect(celcom?.monthlySavingsSen).toBe(2000);
+
+    // Duolingo: saves 1445 sen
+    const duo = result.opportunities.find((o) => o.merchantName === 'Duolingo Super');
+    expect(duo?.monthlySavingsSen).toBe(1445);
+  });
+
   it('returns empty results when user is not a student', () => {
     const result = detectStudentSavings(testSubscriptions, false);
     expect(result.count).toBe(0);

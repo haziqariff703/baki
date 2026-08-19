@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import {
   CheckCircle2,
@@ -19,6 +19,7 @@ import { toDatePart } from '@/lib/dates';
 import { scoreInputSchema, type SubscriptionSchema } from '@/lib/validation';
 import { useSearch } from '@/components/shared/SearchContext';
 import { BrandLogo } from '@/components/subscriptions/BrandLogo';
+import { Pagination } from '@/components/shared/Pagination';
 
 interface SubscriptionLedgerProps {
   readonly subscriptions: readonly SubscriptionSchema[];
@@ -91,6 +92,14 @@ export function SubscriptionLedger({ subscriptions }: SubscriptionLedgerProps) {
     [scored, term],
   );
 
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 6;
+
+  const paginated = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return filtered.slice(start, start + PAGE_SIZE);
+  }, [filtered, currentPage]);
+
   // The single amber left-tick annotates the highest-risk (lowest score) row.
   const riskiestId =
     scored.length === 0
@@ -143,59 +152,68 @@ export function SubscriptionLedger({ subscriptions }: SubscriptionLedgerProps) {
           <p className="text-sm text-text-muted">{t('noResults')}</p>
         </div>
       ) : (
-        <ul className="divide-y divide-border-1 border border-border-1 rounded-xl bg-surface-1">
-          {filtered.map(({ subscription, result }) => {
-            const style = RECOMMENDATION_STYLE[result.recommendation.type];
-            const { Icon } = style;
-            const ticked = subscription.id === riskiestId;
-            return (
-              <li
-                key={subscription.id}
-                className={`flex items-center justify-between gap-4 px-5 py-4 ${
-                  ticked ? 'border-l-2 border-accent pl-3' : ''
-                }`}
-              >
-                <div className="min-w-0 flex items-center gap-3">
-                  <BrandLogo merchantName={subscription.merchantName} size={32} />
-                  <div className="min-w-0">
-                    <p className="text-sm text-text-primary truncate">
-                      {subscription.merchantName}
-                    </p>
-                    <p className="text-xs text-text-faint mt-0.5">
-                      {t(`cycle.${subscription.cycle}`)}
-                      {' · '}
-                      {t('nextChargeLabel', {
-                        date: toDatePart(subscription.nextChargeDate),
-                      })}
-                    </p>
+        <div className="space-y-4">
+          <ul className="divide-y divide-border-1 border border-border-1 rounded-xl bg-surface-1">
+            {paginated.map(({ subscription, result }) => {
+              const style = RECOMMENDATION_STYLE[result.recommendation.type];
+              const { Icon } = style;
+              const ticked = subscription.id === riskiestId;
+              return (
+                <li
+                  key={subscription.id}
+                  className={`flex items-center justify-between gap-4 px-5 py-4 ${
+                    ticked ? 'border-l-2 border-accent pl-3' : ''
+                  }`}
+                >
+                  <div className="min-w-0 flex items-center gap-3">
+                    <BrandLogo merchantName={subscription.merchantName} size={32} />
+                    <div className="min-w-0">
+                      <p className="text-sm text-text-primary truncate">
+                        {subscription.merchantName}
+                      </p>
+                      <p className="text-xs text-text-faint mt-0.5">
+                        {t(`cycle.${subscription.cycle}`)}
+                        {' · '}
+                        {t('nextChargeLabel', {
+                          date: toDatePart(subscription.nextChargeDate),
+                        })}
+                      </p>
+                    </div>
                   </div>
-                </div>
-                <div className="flex items-center gap-4 shrink-0">
-                  <span className="font-mono text-sm font-medium text-text-primary">
-                    {result.score}
-                    <span className="text-xs font-normal text-text-faint">
-                      /100
+                  <div className="flex items-center gap-2 sm:gap-4 shrink-0">
+                    <span className="font-mono text-xs sm:text-sm font-semibold text-text-primary">
+                      {result.score}
+                      <span className="text-[10px] sm:text-xs font-normal text-text-faint">
+                        /100
+                      </span>
                     </span>
-                  </span>
-                  <span
-                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-xs font-medium ${style.className}`}
-                  >
-                    <Icon className="w-3 h-3" aria-hidden="true" />
-                    {t(`recommendation.${result.recommendation.type}`)}
-                  </span>
-                  <span
-                    className="font-mono text-sm text-text-primary text-right"
-                    aria-label={t('amountLabel', {
-                      amount: senToMyr(subscription.amountSen),
-                    })}
-                  >
-                    MYR {senToMyr(subscription.amountSen)}
-                  </span>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+                    <span
+                      className={`hidden xs:inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] sm:text-xs font-medium ${style.className}`}
+                    >
+                      <Icon className="w-3 h-3" aria-hidden="true" />
+                      <span className="truncate">{t(`recommendation.${result.recommendation.type}`)}</span>
+                    </span>
+                    <span
+                      className="font-mono text-xs sm:text-sm font-semibold text-text-primary text-right"
+                      aria-label={t('amountLabel', {
+                        amount: senToMyr(subscription.amountSen),
+                      })}
+                    >
+                      MYR {senToMyr(subscription.amountSen)}
+                    </span>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+
+          <Pagination
+            currentPage={currentPage}
+            totalItems={filtered.length}
+            pageSize={PAGE_SIZE}
+            onPageChange={setCurrentPage}
+          />
+        </div>
       )}
     </>
   );

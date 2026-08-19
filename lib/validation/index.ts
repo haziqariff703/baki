@@ -63,3 +63,16 @@ export type {
   ImportUploadSchema,
   UploadedFileSchema,
 } from './imports';
+export {
+  DEFAULT_USER_PROFILE,
+  defaultViewModeSchema,
+  educationTierSchema,
+  statementRetentionSchema,
+  userProfileSchema,
+} from './profile';
+export type {
+  DefaultViewMode,
+  EducationTier,
+  StatementRetention,
+  UserProfile,
+} from './profile';

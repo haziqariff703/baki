@@ -134,6 +134,51 @@ describe('parseCsv', () => {
     expect(result.errors).toHaveLength(1);
     expect(result.errors[0].error).toMatch(/columns/i);
   });
+
+  it('correctly parses headers with Amount (MYR) and UTF-8 BOM', () => {
+    const csv = '\uFEFFTransaction Date,Merchant Name,Amount (MYR)\n2026-08-01,Spotify,15.90\n';
+    const result = parseCsv(csv);
+    expect(result.errors).toEqual([]);
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0]).toEqual({
+      merchantName: 'Spotify',
+      amountSen: 1590,
+      transactionDate: '2026-08-01T00:00:00.000Z',
+    });
+  });
+
+  it('parses malaysian_student_statement.csv sample correctly', () => {
+    const sample = [
+      'Date,Description,Amount',
+      '2026-08-01,SPTF*SPOTIFY MALAYSIA,15.90',
+      '2026-08-03,NETFLIX COM MY,45.00',
+      '2026-08-05,CELCOMDIGI POSTPAID BILL,60.00',
+      '2026-08-12,APPLE.COM/BILL ICLOUD,3.90',
+      '2026-08-14,PASAR MALAM SETAPAK,12.50',
+      '2026-08-15,FAMILYMART BANDAR SUNWAY,18.20',
+    ].join('\n');
+    const result = parseCsv(sample);
+    expect(result.errors).toEqual([]);
+    expect(result.rows).toHaveLength(6);
+    expect(result.rows[0].merchantName).toBe('Spotify');
+    expect(result.rows[0].amountSen).toBe(1590);
+  });
+
+  it('parses young_worker_statement.csv sample correctly', () => {
+    const sample = [
+      'Date,Description,Amount',
+      '2026-08-01,ANYTIME FITNESS BANGSAR,159.00',
+      '2026-08-04,OPENAI CHATGPT PLUS SUBSCRIPTION,99.00',
+      '2026-08-08,MAXIS MOBILE POSTPAID,98.00',
+      '2026-08-10,PETRONAS KLCC FUEL,70.00',
+      '2026-08-14,CANVA PRO ANNUAL PLAN,49.90',
+    ].join('\n');
+    const result = parseCsv(sample);
+    expect(result.errors).toEqual([]);
+    expect(result.rows).toHaveLength(5);
+    expect(result.rows[0].merchantName).toBe('Anytime Fitness');
+    expect(result.rows[0].amountSen).toBe(15900);
+  });
 });
 
 describe('uploadedFileSchema (§12)', () => {
@@ -176,6 +221,14 @@ describe('uploadedFileSchema (§12)', () => {
   it('rejects a CSV name paired with a PDF MIME type', () => {
     const mismatch = { name: 'statement.csv', size: 1024, type: 'application/pdf' };
     expect(uploadedFileSchema.safeParse(mismatch).success).toBe(false);
+  });
+
+  it('accepts valid receipt image files (PNG, JPG, WEBP)', () => {
+    const validPng = { name: 'receipt.png', size: 1024 * 100, type: 'image/png' };
+    expect(uploadedFileSchema.safeParse(validPng).success).toBe(true);
+
+    const validJpg = { name: 'tng_slip.jpg', size: 1024 * 200, type: 'image/jpeg' };
+    expect(uploadedFileSchema.safeParse(validJpg).success).toBe(true);
   });
 
   it('rejects an empty file', () => {

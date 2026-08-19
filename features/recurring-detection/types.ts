@@ -87,4 +87,10 @@ export interface RecurringCandidateRepository {
     cycle: BillingCycle,
     nextChargeDate: string,
   ): Promise<Subscription>;
+
+  /** Insert newly detected candidates (§2.1). */
+  insertMany(
+    userId: string,
+    candidates: readonly Omit<RecurringCandidate, 'id' | 'status' | 'detectedAt'>[],
+  ): Promise<readonly RecurringCandidate[]>;
 }

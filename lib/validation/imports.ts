@@ -51,8 +51,11 @@ export const uploadedFileSchema = z
       .trim()
       .min(1, { error: 'File type is required' })
       .refine(
-        (type) => type === 'text/csv' || type === 'application/pdf',
-        { message: 'Only CSV or PDF files are supported' },
+        (type) =>
+          type === 'text/csv' ||
+          type === 'application/pdf' ||
+          type.startsWith('image/'),
+        { message: 'Only CSV, PDF, or image files (PNG, JPG) are supported' },
       ),
   })
   .strict()
@@ -61,6 +64,14 @@ export const uploadedFileSchema = z
       const lower = file.name.toLowerCase();
       if (file.type === 'application/pdf') return lower.endsWith('.pdf');
       if (file.type === 'text/csv') return lower.endsWith('.csv');
+      if (file.type.startsWith('image/')) {
+        return (
+          lower.endsWith('.png') ||
+          lower.endsWith('.jpg') ||
+          lower.endsWith('.jpeg') ||
+          lower.endsWith('.webp')
+        );
+      }
       return false;
     },
     { message: 'File extension does not match its type' },

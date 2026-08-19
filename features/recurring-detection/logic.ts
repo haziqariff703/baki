@@ -7,6 +7,7 @@
  */
 
 import { senToMyr } from '@/lib/money';
+import { resolveMerchant } from '@/features/merchants';
 import type { BillingCycle } from '@/features/cash-flow';
 import type {
   CandidateEdit,
@@ -152,4 +153,79 @@ export function nextChargeAfterCycle(
   const lastDayOfNextYearMonth = new Date(Date.UTC(year + 1, month + 1, 0)).getUTCDate();
   const clampedYearly = Math.min(day, lastDayOfNextYearMonth);
   return new Date(Date.UTC(year + 1, month, clampedYearly)).toISOString();
+}
+
+export interface DetectableTransaction {
+  readonly id?: string;
+  readonly merchantName: string;
+  readonly amountSen: number;
+  readonly transactionDate: string;
+}
+
+/**
+ * Deterministic recurring cadence and subscription candidate detection (AGENTS.md §2.1).
+ * Detects recurring payments from:
+ * 1. Multi-occurrence cadence (>= 2 transactions grouped by merchant).
+ * 2. Curated Malaysian subscription catalog matches (e.g. Spotify, Netflix, Telcos, Software).
+ */
+export function detectRecurringCadence(
+  transactions: readonly DetectableTransaction[],
+): readonly Omit<RecurringCandidate, 'id' | 'status' | 'detectedAt'>[] {
+  const groups = new Map<string, DetectableTransaction[]>();
+
+  for (const t of transactions) {
+    const name = t.merchantName.trim();
+    if (!groups.has(name)) {
+      groups.set(name, []);
+    }
+    groups.get(name)!.push(t);
+  }
+
+  const candidates: Omit<RecurringCandidate, 'id' | 'status' | 'detectedAt'>[] = [];
+
+  for (const [merchantName, txs] of groups.entries()) {
+    // Sort by transaction date ascending
+    const sorted = [...txs].sort(
+      (a, b) =>
+        new Date(a.transactionDate).getTime() - new Date(b.transactionDate).getTime(),
+    );
+
+    const latest = sorted[sorted.length - 1];
+
+    if (txs.length >= 2) {
+      const intervals: number[] = [];
+      for (let i = 1; i < sorted.length; i++) {
+        const diffMs =
+          new Date(sorted[i].transactionDate).getTime() -
+          new Date(sorted[i - 1].transactionDate).getTime();
+        intervals.push(diffMs / (1000 * 60 * 60 * 24));
+      }
+
+      const avgInterval = intervals.reduce((acc, v) => acc + v, 0) / intervals.length;
+      if (avgInterval > 0) {
+        candidates.push({
+          merchantName: latest.merchantName,
+          amountSen: latest.amountSen,
+          occurrenceCount: sorted.length,
+          intervalDays: Math.round(avgInterval),
+          aiConfidence: 0.98,
+        });
+        continue;
+      }
+    }
+
+    // For single-occurrence transactions, detect known subscriptions from catalog
+    const resolved = resolveMerchant(merchantName);
+    if (resolved.isKnownMerchant) {
+      candidates.push({
+        merchantName: resolved.canonicalName,
+        amountSen: latest.amountSen,
+        occurrenceCount: 1,
+        intervalDays: 30, // Standard 30-day monthly cadence assumption for single statement
+        aiConfidence: 0.90,
+      });
+    }
+  }
+
+  return candidates;
 }
