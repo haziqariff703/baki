@@ -22,9 +22,8 @@ import { SupabaseConsentRepository } from '@/features/consent';
 import { requestDeletionUseCase } from '@/features/privacy';
 import { assembleExport, serializeJson } from '@/features/privacy';
 
-const url = process.env.BAKI_TEST_SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
-const anonKey =
-  process.env.BAKI_TEST_ANON_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const url = process.env.BAKI_TEST_SUPABASE_URL;
+const anonKey = process.env.BAKI_TEST_ANON_KEY;
 const userA = {
   email: process.env.BAKI_TEST_USER_A_EMAIL,
   password: process.env.BAKI_TEST_USER_A_PASSWORD,
@@ -35,6 +34,7 @@ const userB = {
 };
 
 const configured =
+  process.env.BAKI_TEST_RUN_RLS === 'true' &&
   Boolean(url) &&
   Boolean(anonKey) &&
   Boolean(userA.email) &&

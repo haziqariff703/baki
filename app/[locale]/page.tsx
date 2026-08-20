@@ -1,62 +1,60 @@
 import { useTranslations } from 'next-intl';
 import Navbar from '@/components/shared/Navbar';
+import { HeroStudio } from '@/components/landing/HeroStudio';
+import { MarqueeTicker } from '@/components/landing/MarqueeTicker';
+import { WorkflowSteps } from '@/components/landing/WorkflowSteps';
+import { AsymmetricBento } from '@/components/landing/AsymmetricBento';
 import ValueEvaluator from '@/components/landing/ValueEvaluator';
-import ParserSteps from '@/components/landing/ParserSteps';
-import FeatureGrid from '@/components/landing/FeatureGrid';
-import { Link } from '@/i18n/routing';
-import { ArrowRight } from 'lucide-react';
+import { ArchitecturalComparison } from '@/components/landing/ArchitecturalComparison';
+import { HorizonCta } from '@/components/landing/HorizonCta';
 
 /**
- * Marketing landing page — hero, interactive value evaluator, parser explainer,
- * feature grid, and footer. Server Component for fast first paint; the
- * interactive evaluator is a Client Component imported below.
+ * Marketing Landing Page — Awwwards-Level Architectural Showcase for Baki.
+ *
+ * Swiss Minimalist & Studio Fintech Aesthetic:
+ * - Split-screen hero with interactive live statement scanner.
+ * - Kinetic Malaysian subscription marquee stream.
+ * - 4-quadrant asymmetrical bento grid with real-time interactive micro-tools.
+ * - Interactive 5-pillar score matrix demo & terminal comparison ledger.
  */
 export default function LandingPage() {
   const tLanding = useTranslations('Landing');
-  const tCommon = useTranslations('Common');
 
   return (
-    <div className="min-h-screen bg-surface-0 text-text-primary font-sans flex flex-col overflow-x-hidden w-full">
-      <Navbar variant="public" title={tLanding('heroTitle')} />
+    <div className="min-h-screen bg-surface-0 text-text-primary font-sans flex flex-col overflow-x-hidden w-full scroll-smooth">
+      {/* Public Navigation Header */}
+      <Navbar variant="public" />
 
-      <main className="flex-1 p-4 sm:p-6 md:p-10 max-w-7xl mx-auto w-full space-y-8 md:space-y-10">
-        {/* Hero */}
-        <div className="text-center space-y-4 max-w-3xl mx-auto pt-4">
-          <h1 className="text-3xl md:text-5xl font-semibold tracking-[-0.02em] leading-[1.1] text-text-primary">
-            {tLanding('heroTitle')}
-          </h1>
-          <p className="text-sm text-text-secondary leading-relaxed max-w-2xl mx-auto">
-            {tLanding('heroSubtitle')}
-          </p>
-          <div className="flex items-center justify-center gap-4 pt-2">
-            <Link
-              href="/dashboard"
-              className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl border border-border-3 bg-surface-3 text-text-primary text-sm font-medium hover:bg-surface-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-            >
-              <span>{tCommon('openApp')}</span>
-              <ArrowRight className="w-4 h-4" aria-hidden="true" />
-            </Link>
-            <Link
-              href="/login"
-              className="text-sm text-text-muted underline underline-offset-4 decoration-border-3 hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded"
-            >
-              {tLanding('signInCta')}
-            </Link>
-          </div>
-        </div>
+      {/* 1. Split-Screen Studio Hero */}
+      <div className="px-4 sm:px-6 md:px-10 max-w-7xl mx-auto w-full">
+        <HeroStudio />
+      </div>
 
-        {/* Interactive value evaluator */}
+      {/* 2. Kinetic Malaysian Subscription Stream */}
+      <MarqueeTicker />
+
+      {/* Main Content Body */}
+      <main className="flex-1 px-4 sm:px-6 md:px-10 max-w-7xl mx-auto w-full space-y-16 md:space-y-24 py-12 md:py-16">
+        {/* 3. 3-Step Ingestion & Human Control Workflow */}
+        <WorkflowSteps />
+
+        {/* 4. Asymmetric Bento (Runway Simulator, Student Hub, Shredder, 5-Pillars) */}
+        <AsymmetricBento />
+
+        {/* 5. Interactive Live 5-Pillar Score Matrix Demo */}
         <ValueEvaluator />
 
-        {/* Statement parser explainer */}
-        <ParserSteps />
+        {/* 6. Architectural Terminal Comparison Matrix */}
+        <ArchitecturalComparison />
 
-        {/* Feature showcase */}
-        <FeatureGrid />
+        {/* 7. Kinetic Conversion Horizon */}
+        <HorizonCta />
 
-        {/* Footer */}
-        <footer className="border-t border-border-1 pt-8 pb-12 text-center text-xs text-text-faint space-y-2">
-          <p>{tLanding('footerDisclaimer')}</p>
+        {/* 8. Compliant Studio Footer */}
+        <footer className="border-t border-border-1 pt-12 pb-16 text-center text-xs text-text-faint space-y-3 font-mono">
+          <p className="max-w-3xl mx-auto leading-relaxed">
+            {tLanding('footerDisclaimer')}
+          </p>
           <p>{tLanding('footerCopyright')}</p>
         </footer>
       </main>

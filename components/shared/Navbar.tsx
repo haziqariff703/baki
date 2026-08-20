@@ -45,21 +45,39 @@ interface NavigationLinkProps extends ComponentPropsWithoutRef<typeof Link> {
 }
 
 const NavigationLink = forwardRef<ComponentRef<typeof Link>, NavigationLinkProps>(
-  ({ className, active, ...props }, ref) => (
-    <Link
-      ref={ref}
-      aria-current={active ? 'page' : undefined}
-      className={cn(
-        'inline-flex items-center px-3.5 py-1.5 rounded-xl text-xs font-medium transition-all',
-        'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent',
-        active
-          ? 'border border-border-3 bg-surface-3 text-text-primary shadow-xs'
-          : 'border border-transparent text-text-muted hover:text-text-primary hover:bg-surface-2',
-        className,
-      )}
-      {...props}
-    />
-  ),
+  ({ className, active, href, ...props }, ref) => {
+    const isAnchor = typeof href === 'string' && href.startsWith('#');
+    if (isAnchor) {
+      return (
+        <a
+          href={href as string}
+          className={cn(
+            'inline-flex items-center px-3.5 py-1.5 rounded-xl text-xs font-medium transition-all',
+            'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent',
+            'border border-transparent text-text-muted hover:text-text-primary hover:bg-surface-2',
+            className,
+          )}
+          {...(props as any)}
+        />
+      );
+    }
+    return (
+      <Link
+        ref={ref}
+        href={href}
+        aria-current={active ? 'page' : undefined}
+        className={cn(
+          'inline-flex items-center px-3.5 py-1.5 rounded-xl text-xs font-medium transition-all',
+          'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent',
+          active
+            ? 'border border-border-3 bg-surface-3 text-text-primary shadow-xs'
+            : 'border border-transparent text-text-muted hover:text-text-primary hover:bg-surface-2',
+          className,
+        )}
+        {...props}
+      />
+    );
+  },
 );
 NavigationLink.displayName = 'NavigationLink';
 
@@ -112,11 +130,11 @@ function SignInLink({ className }: { readonly className?: string }) {
   );
 }
 
-function OpenAppLink({ className }: { readonly className?: string }) {
-  const tCommon = useTranslations('Common');
+function GetStartedLink({ className }: { readonly className?: string }) {
+  const tNav = useTranslations('Nav');
   return (
     <Link
-      href="/dashboard"
+      href="/login"
       className={cn(
         'inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold',
         'bg-accent text-surface-0 transition-all hover:bg-accent-hover shadow-xs active:scale-[0.98]',
@@ -124,7 +142,7 @@ function OpenAppLink({ className }: { readonly className?: string }) {
         className,
       )}
     >
-      <span>{tCommon('openApp')}</span>
+      <span>{tNav('getStarted')}</span>
       <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
     </Link>
   );
@@ -160,22 +178,37 @@ function NavbarSheet({
       className="md:hidden border-t border-border-1 bg-surface-0/95 backdrop-blur-md px-4 pt-3 pb-4 space-y-3"
     >
       <nav aria-label={navLabel} className="space-y-1">
-        {navItems.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            aria-current={isActive(item.href) ? 'page' : undefined}
-            onClick={() => onOpenChange(false)}
-            className={cn('flex w-full', linkClass(item.href))}
-          >
-            {item.label}
-          </Link>
-        ))}
+        {navItems.map((item) => {
+          const isAnchor = item.href.startsWith('#');
+          if (isAnchor) {
+            return (
+              <a
+                key={item.href}
+                href={item.href}
+                onClick={() => onOpenChange(false)}
+                className={cn('flex w-full', linkClass(item.href))}
+              >
+                {item.label}
+              </a>
+            );
+          }
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              aria-current={isActive(item.href) ? 'page' : undefined}
+              onClick={() => onOpenChange(false)}
+              className={cn('flex w-full', linkClass(item.href))}
+            >
+              {item.label}
+            </Link>
+          );
+        })}
       </nav>
       {showSignIn && (
         <div className="flex items-center gap-2 pt-2 border-t border-border-1">
           <SignInLink className="flex-1 justify-center border border-border-2" />
-          <OpenAppLink className="flex-1 justify-center" />
+          <GetStartedLink className="flex-1 justify-center" />
         </div>
       )}
     </div>
@@ -217,8 +250,11 @@ export default function Navbar({
   const appNavItems: readonly NavItem[] = [];
 
   const publicNavItems: readonly NavItem[] = [
-    { href: '/review', label: tNav('review') },
-    { href: '/dashboard', label: tNav('dashboard') },
+    { href: '#features', label: tNav('features') },
+    { href: '#how-it-works', label: tNav('howItWorks') },
+    { href: '#students', label: tNav('students') },
+    { href: '#demo', label: tNav('demo') },
+    { href: '#privacy', label: tNav('privacy') },
   ];
 
   const navItems = isPublic ? publicNavItems : appNavItems;
@@ -252,7 +288,7 @@ export default function Navbar({
             <>
               <div className="hidden md:flex items-center gap-2 ml-1">
                 <SignInLink />
-                <OpenAppLink />
+                <GetStartedLink />
               </div>
               {/* Mobile toggle (public) */}
               <button

@@ -16,6 +16,7 @@
 
 import { useId, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   CheckCircle2,
   Eye,
@@ -213,7 +214,7 @@ export default function ValueEvaluator() {
   const RecIcon = recStyle?.Icon ?? CheckCircle2;
 
   return (
-    <div className="bg-surface-1 border border-border-1 rounded-xl overflow-hidden">
+    <section id="demo" className="bg-surface-1 border border-border-1 rounded-2xl overflow-hidden shadow-xs scroll-mt-20">
       <div className="p-6 md:p-8 space-y-6">
         {/* Header */}
         <div className="border-b border-border-1 pb-4 flex items-baseline justify-between gap-4 flex-wrap">
@@ -320,49 +321,64 @@ export default function ValueEvaluator() {
             className="bg-surface-2 border border-border-1 rounded-xl p-5 md:p-6 space-y-5"
             aria-live="polite"
           >
-            {!result ? (
-              <div className="flex flex-col items-center justify-center min-h-[280px] text-center space-y-3 py-8">
-                <ShieldCheck className="w-6 h-6 text-text-faint" aria-hidden="true" />
-                <p className="text-sm text-text-muted max-w-[240px]">
-                  {t('resultEmpty')}
-                </p>
-              </div>
-            ) : (
-              <>
-                {/* Score + recommendation */}
-                <div className="flex items-start justify-between gap-4 flex-wrap">
-                  <div>
-                    <p className="text-xs text-text-muted font-medium">
-                      {t('resultScore')}
-                    </p>
-                    <p className="font-mono text-5xl font-medium text-text-primary mt-1">
-                      {result.score}
-                    </p>
-                    <p className="font-mono text-xs uppercase tracking-wider text-text-faint mt-1">
-                      {t(`band.${result.band}`)}
-                    </p>
-                  </div>
+            <AnimatePresence mode="wait">
+              {!result ? (
+                <motion.div
+                  key="empty"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.3 }}
+                  className="flex flex-col items-center justify-center min-h-[280px] text-center space-y-3 py-8"
+                >
+                  <ShieldCheck className="w-6 h-6 text-text-faint" aria-hidden="true" />
+                  <p className="text-sm text-text-muted max-w-[240px]">
+                    {t('resultEmpty')}
+                  </p>
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="result"
+                  initial={{ opacity: 0, scale: 0.98, y: 8 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.98, y: 8 }}
+                  transition={{ duration: 0.35, ease: 'easeOut' }}
+                  className="space-y-5"
+                >
+                  {/* Score + recommendation */}
+                  <div className="flex items-start justify-between gap-4 flex-wrap">
+                    <div>
+                      <p className="text-xs text-text-muted font-medium">
+                        {t('resultScore')}
+                      </p>
+                      <p className="font-mono text-5xl font-medium text-text-primary mt-1">
+                        {result.score}
+                      </p>
+                      <p className="font-mono text-xs uppercase tracking-wider text-text-faint mt-1">
+                        {t(`band.${result.band}`)}
+                      </p>
+                    </div>
 
-                  <div
-                    className={cn(
-                      'inline-flex items-center gap-2 px-3 py-2 rounded-xl border',
-                      recStyle?.className,
-                    )}
-                  >
-                    <RecIcon className="w-4 h-4 shrink-0" aria-hidden="true" />
-                    <span className="text-xs font-semibold">
-                      {tCommon(
-                        result.recommendation.type === 'downgrade_or_pause'
-                          ? 'Pause'
-                          : result.recommendation.type === 'consider_cancelling'
-                            ? 'Cancel'
-                            : result.recommendation.type === 'review'
-                              ? 'Review'
-                              : 'Keep',
+                    <div
+                      className={cn(
+                        'inline-flex items-center gap-2 px-3 py-2 rounded-xl border',
+                        recStyle?.className,
                       )}
-                    </span>
+                    >
+                      <RecIcon className="w-4 h-4 shrink-0" aria-hidden="true" />
+                      <span className="text-xs font-semibold">
+                        {tCommon(
+                          result.recommendation.type === 'downgrade_or_pause'
+                            ? 'Pause'
+                            : result.recommendation.type === 'consider_cancelling'
+                              ? 'Cancel'
+                              : result.recommendation.type === 'review'
+                                ? 'Review'
+                                : 'Keep',
+                        )}
+                      </span>
+                    </div>
                   </div>
-                </div>
 
                 {/* Context line (name + price) */}
                 {(providerName.trim() || priceSen !== null) && (
@@ -446,11 +462,12 @@ export default function ValueEvaluator() {
                 <p className="font-mono text-xs uppercase tracking-wider text-text-faint pt-1">
                   {result.ruleVersion}
                 </p>
-              </>
+              </motion.div>
             )}
-          </div>
+          </AnimatePresence>
         </div>
       </div>
     </div>
-  );
+  </section>
+);
 }

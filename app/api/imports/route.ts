@@ -33,6 +33,8 @@ import {
   SupabaseRecurringCandidateRepository,
 } from '@/features/recurring-detection';
 
+import { checkRateLimit, getClientIp } from '@/lib/security/rate-limit';
+
 export const runtime = 'nodejs'; // pdfjs + Buffer require Node
 export const dynamic = 'force-dynamic';
 
@@ -45,6 +47,22 @@ function sourceFromMime(type: string): 'csv' | 'pdf' {
 
 export async function POST(request: Request) {
   try {
+    // Rate limit check: max 5 statement imports per minute per user/IP
+    const ip = getClientIp(request);
+    const rateLimit = checkRateLimit(`import:${ip}`, { limit: 5, windowSeconds: 60 });
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        {
+          error: 'RATE_LIMITED',
+          message: `Too many upload attempts. Please try again in ${rateLimit.resetSeconds} seconds.`,
+        },
+        {
+          status: 429,
+          headers: { 'Retry-After': String(rateLimit.resetSeconds) },
+        },
+      );
+    }
+
     // §11 step 1 — resolve authenticated user.
     const user = await requireUser();
 

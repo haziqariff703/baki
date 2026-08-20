@@ -5,12 +5,29 @@ import { SupabaseProfileRepository } from '@/features/settings/repository';
 import { generateRenewalNotifications } from '@/features/notifications/logic';
 import { buildRenewalEmailHtml, sendEmailNotification } from '@/lib/email';
 import { syntheticSubscriptions } from '@/tests/fixtures/subscriptions';
+import { checkRateLimit, getClientIp } from '@/lib/security/rate-limit';
 
 /**
- * Dispatch Email Notifications Route (�§11 / §2.3 / £Ĵ.1).
+ * Dispatch Email Notifications Route (§11 / §2.3 / £Ĵ.1).
  */
 export async function POST(req: Request) {
   try {
+    // Rate limit check: max 10 notification dispatches per minute per user/IP
+    const ip = getClientIp(req);
+    const rateLimit = checkRateLimit(`notify:${ip}`, { limit: 10, windowSeconds: 60 });
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        {
+          error: 'RATE_LIMITED',
+          message: `Too many notification requests. Please retry in ${rateLimit.resetSeconds} seconds.`,
+        },
+        {
+          status: 429,
+          headers: { 'Retry-After': String(rateLimit.resetSeconds) },
+        },
+      );
+    }
+
     const supabase = await createClient();
     const {
       data: { user },

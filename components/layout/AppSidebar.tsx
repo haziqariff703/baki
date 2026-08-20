@@ -184,7 +184,7 @@ function AccountWidget({ collapsed }: { readonly collapsed: boolean }) {
     setOpen(false);
     await supabase.auth.signOut();
     router.refresh();
-    router.push('/login');
+    router.push('/');
   }
 
   // Close on click-outside + Escape.

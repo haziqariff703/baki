@@ -13,12 +13,28 @@ import { toErrorResponse } from '@/lib/api';
 import { createServerSupabase } from '@/lib/database';
 import { deletionConfirmationSchema } from '@/lib/validation';
 import { requestDeletionUseCase } from '@/features/privacy';
+import { checkRateLimit, getClientIp } from '@/lib/security/rate-limit';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
   try {
     const user = await requireUser();
+
+    // Rate limit check: max 3 deletion attempts per 10 minutes per user
+    const rateLimit = checkRateLimit(`delete:${user.id}`, { limit: 3, windowSeconds: 600 });
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        {
+          error: 'RATE_LIMITED',
+          message: `Too many deletion attempts. Please wait ${Math.ceil(rateLimit.resetSeconds / 60)} minutes before trying again.`,
+        },
+        {
+          status: 429,
+          headers: { 'Retry-After': String(rateLimit.resetSeconds) },
+        },
+      );
+    }
 
     const body: unknown = await request.json().catch(() => null);
     const { phrase } = deletionConfirmationSchema.parse(body);
