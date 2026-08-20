@@ -68,33 +68,54 @@ body {
 }
 
 @media print {
+  @page {
+    size: A4 portrait;
+    margin: 12mm;
+  }
+
   body {
     background: #ffffff !important;
-    color: #000000 !important;
+    color: #0f172a !important;
+    font-size: 11pt !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
+
   header,
   aside,
   nav,
+  button,
   .print\:hidden {
     display: none !important;
   }
+
   main {
     padding: 0 !important;
     margin: 0 !important;
     width: 100% !important;
     max-width: 100% !important;
   }
+
+  section,
+  table,
+  tr,
+  .break-inside-avoid {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
   .bg-surface-0,
   .bg-surface-1,
   .bg-surface-2,
   .bg-surface-3 {
     background: #ffffff !important;
-    color: #000000 !important;
+    color: #0f172a !important;
   }
+
   .text-text-primary,
   .text-text-secondary,
   .text-text-muted,
   .text-text-faint {
-    color: #111111 !important;
+    color: #0f172a !important;
   }
 }

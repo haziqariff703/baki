@@ -13,7 +13,7 @@ import { SupabaseRecurringCandidateRepository } from '@/features/recurring-detec
 export default async function ReviewPage() {
   const t = await getTranslations('Review');
 
-  let initialCandidates = syntheticCandidates;
+  let initialCandidates: any[] = [];
 
   try {
     const supabase = await createClient();
@@ -22,9 +22,10 @@ export default async function ReviewPage() {
     if (user) {
       const repo = new SupabaseRecurringCandidateRepository(supabase);
       const cands = await repo.list(user.id);
-      if (cands && cands.length > 0) {
-        initialCandidates = cands as any;
-      }
+      initialCandidates = (cands ?? []) as any[];
+    } else {
+      // Guest demo fallback only when completely unauthenticated
+      initialCandidates = syntheticCandidates as any[];
     }
   } catch (error) {
     console.error('[ReviewPage] Server hydration error:', error);

@@ -290,6 +290,75 @@ describe('parsePdfText (text-based PDF)', () => {
     expect(result.empty).toBe(false);
   });
 
+  it('extracts rows from Maybank PDF layout with 2-digit years and month names', async () => {
+    const pdf = makeTextPdf('15/07/26 SPTF*SPOTIFY MALAYSIA 15.90-');
+    const result = await parsePdfText(pdf);
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].merchantName).toBe('Spotify');
+    expect(result.rows[0].amountSen).toBe(1590);
+    expect(result.rows[0].transactionDate).toBe('2026-07-15T00:00:00.000Z');
+  });
+
+  it('extracts rows from Maybank dual-date savings account layout with balance', async () => {
+    const pdf = makeTextPdf('01/08/2026 01/08/2026 SPOTIFY MALAYSIA 15.90 - 1,450.00 +');
+    const result = await parsePdfText(pdf);
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].merchantName).toBe('Spotify');
+    expect(result.rows[0].amountSen).toBe(1590);
+    expect(result.rows[0].transactionDate).toBe('2026-08-01T00:00:00.000Z');
+  });
+
+  it('extracts rows from Maybank credit card layout with DD/MM format', async () => {
+    const pdf = makeTextPdf('15/07 16/07 SPOTIFY MALAYSIA 15.90');
+    const result = await parsePdfText(pdf);
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].merchantName).toBe('Spotify');
+    expect(result.rows[0].amountSen).toBe(1590);
+    expect(result.rows[0].transactionDate).toMatch(/-07-15/);
+  });
+
+  it('extracts rows from Maybank month name format with CR indicator', async () => {
+    const pdf = makeTextPdf('15 JUL 2026 15 JUL 2026 NETFLIX COM 55.00 CR 2,340.50');
+    const result = await parsePdfText(pdf);
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].merchantName).toBe('Netflix');
+    expect(result.rows[0].amountSen).toBe(5500);
+    expect(result.rows[0].transactionDate).toBe('2026-07-15T00:00:00.000Z');
+  });
+
+  it('extracts rows from DuitNow QR and FPX Maybank transactions', async () => {
+    const pdf = makeTextPdf('04/08/24 DUITNOW QR TO CHATGPT 99.00 DR 500.00');
+    const result = await parsePdfText(pdf);
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].merchantName).toBe('ChatGPT Plus');
+    expect(result.rows[0].amountSen).toBe(9900);
+    expect(result.rows[0].transactionDate).toBe('2024-08-04T00:00:00.000Z');
+  });
+
+  it('extracts Celcom Mobile Sdn Bhd and Malaysian telco descriptors', async () => {
+    const pdf1 = makeTextPdf('01/08/2026 CELCOM MOBILE SDN BHD 60.00- 1,234.50+');
+    const result1 = await parsePdfText(pdf1);
+    expect(result1.rows).toHaveLength(1);
+    expect(result1.rows[0].merchantName).toBe('CelcomDigi');
+    expect(result1.rows[0].amountSen).toBe(6000);
+    expect(result1.rows[0].transactionDate).toBe('2026-08-01T00:00:00.000Z');
+
+    const pdf2 = makeTextPdf('15/07/26 CELCOM MOBILE SDN B * 40902700 0138934791 60.00 DR');
+    const result2 = await parsePdfText(pdf2);
+    expect(result2.rows).toHaveLength(1);
+    expect(result2.rows[0].merchantName).toBe('CelcomDigi');
+    expect(result2.rows[0].amountSen).toBe(6000);
+  });
+
+  it('extracts rows from two-line wrapped transactions', async () => {
+    const pdf = makeTextPdf('15/07/2026 SPOTIFY MALAYSIA 15.90-');
+    const result = await parsePdfText(pdf);
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].merchantName).toBe('Spotify');
+    expect(result.rows[0].amountSen).toBe(1590);
+    expect(result.rows[0].transactionDate).toBe('2026-07-15T00:00:00.000Z');
+  });
+
   it('reports empty when no embedded text is present', async () => {
     // A PDF with no text stream — still a valid PDF but nothing to extract.
     const pdf = makeTextPdf('');
@@ -303,5 +372,28 @@ describe('parsePdfText (text-based PDF)', () => {
     expect(result.rows).toHaveLength(0);
     expect(result.errors.length).toBeGreaterThan(0);
     expect(result.empty).toBe(true);
+  });
+});
+
+describe('Maybank CSV statements with preamble', () => {
+  it('parses Maybank2u CSV export with metadata preamble and trailing minus', () => {
+    const maybankCsv = [
+      'Account Number: 1234567890',
+      'Account Type: SAVINGS ACCOUNT-I',
+      'Statement Period: 01/07/2026 to 31/07/2026',
+      '',
+      'Transaction Date,Value Date,Transaction Description,Amount,Debit/Credit',
+      '15/07/2026,15/07/2026,SPTF*SPOTIFY SE,15.90-,DR',
+      '20/07/2026,20/07/2026,NETFLIX.COM,55.00,DR',
+    ].join('\n');
+
+    const result = parseCsv(maybankCsv);
+    expect(result.errors).toEqual([]);
+    expect(result.rows).toHaveLength(2);
+    expect(result.rows[0].merchantName).toBe('Spotify');
+    expect(result.rows[0].amountSen).toBe(1590);
+    expect(result.rows[0].transactionDate).toBe('2026-07-15T00:00:00.000Z');
+    expect(result.rows[1].merchantName).toBe('Netflix');
+    expect(result.rows[1].amountSen).toBe(5500);
   });
 });

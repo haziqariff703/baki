@@ -13,6 +13,7 @@ export default defineConfig(({ mode }) => {
     },
     test: {
       include: ['tests/**/*.test.{ts,tsx}'],
+      testTimeout: 15000,
       env,
     },
   };

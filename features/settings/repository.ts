@@ -1,4 +1,4 @@
-﻿import type { SupabaseClient } from '@supabase/supabase-js';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import type { UserProfile } from '@/lib/validation/profile';
 import { userProfileSchema, DEFAULT_USER_PROFILE } from '@/lib/validation/profile';
 
@@ -28,6 +28,7 @@ export class SupabaseProfileRepository implements ProfileRepository {
       educationTier: data.education_tier || 'general',
       universityDomain: data.university_domain || '',
       monthlyBudgetSen: data.monthly_allowance_sen ?? DEFAULT_USER_PROFILE.monthlyBudgetSen,
+      paydayDayOfMonth: data.payday_day_of_month ?? DEFAULT_USER_PROFILE.paydayDayOfMonth,
       reminderDaysBefore: data.reminder_days_before ?? DEFAULT_USER_PROFILE.reminderDaysBefore,
       defaultViewMode: data.default_view_mode || 'actual',
       statementRetentionWindow: data.statement_retention_window || 'immediate',
@@ -53,6 +54,7 @@ export class SupabaseProfileRepository implements ProfileRepository {
       education_tier: profile.educationTier,
       university_domain: profile.universityDomain,
       monthly_allowance_sen: profile.monthlyBudgetSen,
+      payday_day_of_month: profile.paydayDayOfMonth,
       reminder_days_before: profile.reminderDaysBefore,
       default_view_mode: profile.defaultViewMode,
       statement_retention_window: profile.statementRetentionWindow,

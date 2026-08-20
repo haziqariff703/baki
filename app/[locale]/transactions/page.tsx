@@ -13,7 +13,7 @@ import { SupabaseTransactionRepository } from '@/features/transactions/repositor
 export default async function TransactionsPage() {
   const t = await getTranslations('Transactions');
 
-  let initialTransactions = SAMPLE_TRANSACTIONS as any[];
+  let initialTransactions: any[] = [];
 
   try {
     const supabase = await createClient();
@@ -23,7 +23,7 @@ export default async function TransactionsPage() {
       const repo = new SupabaseTransactionRepository(supabase);
       const transactions = await repo.list(user.id);
 
-      if (transactions && transactions.length > 0) {
+      if (transactions) {
         initialTransactions = transactions.map((t) => ({
           id: t.id,
           merchantName: t.merchantName,
@@ -32,6 +32,9 @@ export default async function TransactionsPage() {
           category: undefined,
         }));
       }
+    } else {
+      // Guest demo session fallback
+      initialTransactions = SAMPLE_TRANSACTIONS as any[];
     }
   } catch (error) {
     console.error('[TransactionsPage] Server hydration error:', error);

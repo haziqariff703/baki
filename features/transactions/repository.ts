@@ -158,8 +158,27 @@ export class SupabaseTransactionRepository implements TransactionRepository {
       .select('*')
       .eq('user_id', userId)
       .order('transaction_date', { ascending: false });
-    
+
     if (error) throw error;
     return (data as TransactionRow[]).map(transactionToDomain);
+  }
+
+  async delete(userId: string, id: string): Promise<void> {
+    const { error } = await this.client
+      .from('transactions')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', userId);
+
+    if (error) throw error;
+  }
+
+  async deleteAll(userId: string): Promise<void> {
+    const { error } = await this.client
+      .from('transactions')
+      .delete()
+      .eq('user_id', userId);
+
+    if (error) throw error;
   }
 }

@@ -12,7 +12,7 @@
  * by the parent AppShell (localStorage). Mobile keeps the drawer behaviour.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import {
   LayoutDashboard,
@@ -331,11 +331,24 @@ export function AppSidebar({ collapsed, onToggle, onNavigate }: AppSidebarProps)
   const pathname = usePathname();
   const groups = useGroups();
 
-  // Exact-or-prefix match keeps one active item per route. Each enabled item
-  // has a distinct route, so at most one lights up.
+  // Exact-or-longest-prefix match keeps strictly one active item per route.
+  // When on /settings/privacy, /settings will NOT light up because /settings/privacy is more specific.
+  const allHrefs = useMemo(() => groups.flatMap((g) => g.items.map((i) => i.href)), [groups]);
+
   const isActive = (item: SideItem) => {
     if (item.disabled) return false;
-    return pathname === item.href || pathname.startsWith(`${item.href}/`);
+    if (pathname === item.href) return true;
+
+    // If another sidebar item has a more specific/longer match for the current pathname, don't light up
+    const hasMoreSpecificMatch = allHrefs.some(
+      (otherHref) =>
+        otherHref !== item.href &&
+        otherHref.startsWith(item.href) &&
+        (pathname === otherHref || pathname.startsWith(`${otherHref}/`)),
+    );
+    if (hasMoreSpecificMatch) return false;
+
+    return pathname.startsWith(`${item.href}/`);
   };
 
   return (

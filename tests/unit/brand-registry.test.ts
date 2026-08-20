@@ -9,7 +9,7 @@ import {
 
 describe('Brand Logo Registry & Normalization', () => {
   it('normalizes raw bank transaction descriptors into clean keys', () => {
-    expect(normalizeMerchantToKey('SPTF*SPOTIFY MALAYSIA')).toBe('sptf spotify malaysia');
+    expect(normalizeMerchantToKey('SPTF*SPOTIFY MALAYSIA')).toBe('sptf spotify');
     expect(normalizeMerchantToKey('NETFLIX.COM/MY (REF 12345)')).toBe('netflix com');
     expect(normalizeMerchantToKey('FPX CELCOMDIGI POSTPAID')).toBe('celcomdigi postpaid');
     expect(normalizeMerchantToKey('ANYTIME FITNESS BANGSAR *PENDING')).toBe('anytime fitness bangsar');

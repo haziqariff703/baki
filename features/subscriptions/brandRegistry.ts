@@ -220,28 +220,34 @@ const WHITESPACE_RUN = /\s+/g;
  * key for registry lookup. Pure and deterministic — never calls an LLM and
  * never performs a network lookup.
  */
+/**
+ * Normalize a raw bank-statement descriptor into a canonical lowercase brand
+ * key for registry lookup. Pure and deterministic — never calls an LLM and
+ * never performs a network lookup.
+ */
 export function normalizeMerchantToKey(input: string): string {
   let s = input.toLowerCase().trim();
 
-  // 2 · strip bracketed noise: (dates, refs, card last-4, amounts)
+  // 1 · strip bracketed noise: (dates, refs, card last-4, amounts)
   s = s.replace(/\([^)]*\)/g, ' ').replace(/\[[^\]]*\]/g, ' ');
 
-  // 3 · strip leading payment-system tokens
-  s = s.replace(/^(fpx|myr|web|pos)\s+/i, '');
+  // 2 · strip leading payment-system tokens
+  s = s.replace(/^(?:fpx|myr|web|pos|duitnow|jompay|ibg|autodebit)\s+/i, '');
 
-  // 4 · strip trailing hold markers
+  // 3 · strip trailing hold markers
   s = s
     .replace(/\*\s*pending\s*auth\b/g, ' ')
     .replace(/\*\s*pending\b/g, ' ')
     .replace(/\*\s*preauth\b/g, ' ');
 
-  // 5 · strip country/legal suffixes
-  s = s.replace(/\b(se|sg|my|ltd|llc|pty|sdn\s*bhd)\b\.?/g, ' ');
+  // 4 · strip country & legal suffixes (including truncated Malaysian bank suffixes like 'sdn b', 'bhd', 'berhad')
+  s = s.replace(/\b(?:sdn\s*bhd|sdn\s*b|sdn|bhd|berhad|pte\s*ltd|ltd|llc|pty|corp|inc)\b\.?/g, ' ');
+  s = s.replace(/\b(?:se|sg|my|mys|malaysia|kuala\s*lumpur|kl|petaling\s*jaya|pj)\b/g, ' ');
 
-  // 6 · strip phone numbers and long card/reference runs
+  // 5 · strip phone numbers and long card/reference runs
   s = s.replace(/\b\d{4,}\b/g, ' ');
 
-  // 7 · collapse `*`, `/`, and whitespace runs
+  // 6 · collapse `*`, `/`, and whitespace runs
   s = s.replace(/[*_/#.-]+/g, ' ').replace(WHITESPACE_RUN, ' ').trim();
 
   return s;
@@ -268,13 +274,33 @@ const MERCHANT_ALIASES: Readonly<Record<string, string>> = {
   'anytime fitness mid valley': 'anytime fitness',
   'openai chatgpt plus subscription': 'chatgpt plus',
   'openai chatgpt plus': 'chatgpt plus',
-  'openai chatgpt': 'chatgpt',
+  'openai chatgpt': 'chatgpt plus',
+  chatgpt: 'chatgpt plus',
+  openai: 'chatgpt plus',
   'canva pro annual plan': 'canva',
   'canva pro': 'canva',
+  'celcom mobile': 'celcom',
+  'celcom mobile sdn b': 'celcom',
+  'celcom mobile sdn bhd': 'celcom',
+  'celcom sdn bhd': 'celcom',
+  'celcom postpaid': 'celcom',
+  'celcom postpaid bill': 'celcom',
+  'celcom xpax': 'celcom',
+  'celcom xpax reload': 'celcom',
+  xpax: 'celcom',
   'celcomdigi postpaid bill': 'celcom',
   'celcomdigi postpaid': 'celcom',
+  'celcomdigi berhad': 'celcom',
   'maxis mobile postpaid': 'maxis',
+  'maxis mobile services': 'maxis',
+  'maxis mobile': 'maxis',
+  'maxis broadband': 'maxis',
   'maxis postpaid': 'maxis',
+  'maxis bill': 'maxis',
+  'digi telecommunications': 'digi',
+  'digi tel': 'digi',
+  'digi postpaid': 'digi',
+  'digi bill': 'digi',
   ggrab: 'grab',
   'grab food': 'grab',
   'touch n go': 'touch n go',
@@ -303,14 +329,23 @@ const MERCHANT_ALIASES: Readonly<Record<string, string>> = {
   'tm unifi': 'unifi',
   'tm unifi postpaid': 'unifi',
   'unifi postpaid': 'unifi',
+  'unifi home': 'unifi',
+  'unifi mobile': 'unifi',
   'telekom malaysia': 'unifi',
+  'telekom malaysia berhad': 'unifi',
+  'telekom': 'unifi',
   time: 'time',
   'time internet': 'time',
+  'time dotcom': 'time',
+  'time fibre': 'time',
   hotlink: 'hotlink',
+  'hotlink postpaid': 'hotlink',
   'u mobile': 'u mobile',
   umobile: 'u mobile',
+  'u mobile postpaid': 'u mobile',
   'yes 5g': 'yes 5g',
   'yes communication': 'yes 5g',
+  'ytl communications': 'yes 5g',
   bigpay: 'bigpay',
   'disney+ hotstar': 'disney+',
   'disney hotstar': 'disney+',
@@ -318,9 +353,17 @@ const MERCHANT_ALIASES: Readonly<Record<string, string>> = {
   'amazon prime video': 'prime video',
   'prime video': 'prime video',
   'tenaga nasional': 'tnb',
+  'tenaga nasional berhad': 'tnb',
   tnb: 'tnb',
   'air selangor': 'air selangor',
+  'pengurusan air selangor': 'air selangor',
+  syabas: 'air selangor',
   'indah water': 'indah water',
+  'indah water konsortium': 'indah water',
+  iwk: 'indah water',
+  astro: 'astro',
+  'measat broadcast': 'astro',
+  'measat broadcast network systems': 'astro',
 };
 
 const BRAND_CANONICAL_NAMES: Readonly<Record<string, string>> = {
@@ -405,13 +448,38 @@ const BRAND_CANONICAL_NAMES: Readonly<Record<string, string>> = {
  * Resolve a raw merchant descriptor to a canonical brand key (deterministic).
  *
  * First strips noise via `normalizeMerchantToKey`, then applies the alias table.
- * Returns the canonical key (lowercased) ready for `resolveBrandLogo`. Falls
- * back to the stripped key unchanged when no alias matches, so `resolveBrandLogo`
- * still returns a monogram for unknown merchants.
+ * If no exact alias matches, applies keyword & prefix matching for major Malaysian
+ * and international brands.
  */
 export function resolveBrandKey(descriptor: string): string {
   const stripped = normalizeMerchantToKey(descriptor);
-  return MERCHANT_ALIASES[stripped] ?? stripped;
+  if (MERCHANT_ALIASES[stripped]) {
+    return MERCHANT_ALIASES[stripped];
+  }
+
+  // Keyword & prefix matching for Malaysian telcos, utilities, and major brands
+  if (stripped.startsWith('celcom') || stripped.includes('celcom')) return 'celcom';
+  if (stripped.startsWith('maxis') || stripped.includes('maxis')) return 'maxis';
+  if (stripped.startsWith('digi') || stripped.includes('digi')) return 'digi';
+  if (stripped.startsWith('hotlink') || stripped.includes('hotlink')) return 'hotlink';
+  if (stripped.startsWith('unifi') || stripped.includes('unifi') || stripped.includes('telekom')) return 'unifi';
+  if (stripped.startsWith('time') || stripped.includes('time internet') || stripped.includes('time fibre')) return 'time';
+  if (stripped.startsWith('u mobile') || stripped.includes('umobile')) return 'u mobile';
+  if (stripped.startsWith('yes 5g') || stripped.includes('ytl')) return 'yes 5g';
+  if (stripped.startsWith('astro') || stripped.includes('measat')) return 'astro';
+  if (stripped.startsWith('tnb') || stripped.includes('tenaga nasional')) return 'tnb';
+  if (stripped.startsWith('air selangor') || stripped.includes('syabas') || stripped.includes('pengurusan air')) return 'air selangor';
+  if (stripped.startsWith('indah water') || stripped.includes('iwk')) return 'indah water';
+  if (stripped.startsWith('spotify') || stripped.startsWith('sptf')) return 'spotify';
+  if (stripped.startsWith('netflix')) return 'netflix';
+  if (stripped.startsWith('apple') || stripped.startsWith('itunes') || stripped.includes('icloud')) return 'apple';
+  if (stripped.startsWith('google') || stripped.startsWith('youtube') || stripped.startsWith('yt ')) return 'google';
+  if (stripped.startsWith('openai') || stripped.startsWith('chatgpt')) return 'chatgpt plus';
+  if (stripped.startsWith('anthropic') || stripped.startsWith('claude')) return 'claude';
+  if (stripped.startsWith('canva')) return 'canva';
+  if (stripped.startsWith('anytime fitness')) return 'anytime fitness';
+
+  return stripped;
 }
 
 /**

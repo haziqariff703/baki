@@ -14,6 +14,7 @@ import {
   Check,
   Loader2,
   Building2,
+  Send,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -59,7 +60,42 @@ export function AccountProfileSettings({ initialUser }: AccountProfileSettingsPr
   );
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'idle'>('saved');
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [testEmailStatus, setTestEmailStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  const [testEmailFeedback, setTestEmailFeedback] = useState<string | null>(null);
   const isFirstRender = useRef(true);
+
+  async function handleSendTestEmail() {
+    if (!profile.email) return;
+    setTestEmailStatus('sending');
+    setTestEmailFeedback(null);
+    try {
+      const res = await fetch('/api/notifications/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ testEmail: profile.email, forceTest: true }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setTestEmailStatus('sent');
+        setTestEmailFeedback(
+          t('testEmailSent', { recipient: data.recipient ?? profile.email }) +
+            (data.mocked ? ' (Simulated)' : ''),
+        );
+      } else {
+        setTestEmailStatus('error');
+        setTestEmailFeedback(
+          t('testEmailFailed', { error: data.error || 'Unknown error' }),
+        );
+      }
+    } catch (err) {
+      setTestEmailStatus('error');
+      setTestEmailFeedback(
+        t('testEmailFailed', {
+          error: err instanceof Error ? err.message : 'Network error',
+        }),
+      );
+    }
+  }
 
   // Derive University & Domain matching dynamically from current email
   const universityInfo = useMemo(() => {
@@ -148,6 +184,7 @@ export function AccountProfileSettings({ initialUser }: AccountProfileSettingsPr
       if (result.success) {
         try {
           localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(result.data));
+          window.dispatchEvent(new Event('baki_profile_updated'));
           setErrors({});
           setSaveStatus('saved');
         } catch {
@@ -465,6 +502,61 @@ export function AccountProfileSettings({ initialUser }: AccountProfileSettingsPr
               })}
             </p>
           </div>
+
+          {/* Payday Anchor Day of Month */}
+          <div className="space-y-2 pt-3 border-t border-border-1/60">
+            <div className="space-y-0.5">
+              <label
+                htmlFor="payday-input"
+                className="text-xs font-medium text-text-secondary block"
+              >
+                {t('paydayTitle')}
+              </label>
+              <p className="text-[11px] text-text-muted">{t('paydayDesc')}</p>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <input
+                id="payday-input"
+                type="number"
+                min={1}
+                max={31}
+                value={profile.paydayDayOfMonth || 25}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value, 10);
+                  if (!isNaN(val) && val >= 1 && val <= 31) {
+                    setProfile((p) => ({ ...p, paydayDayOfMonth: val }));
+                  }
+                }}
+                className="w-24 bg-surface-2 border border-border-2 rounded-xl px-3 py-2 font-mono text-sm text-text-primary text-center focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent transition-colors"
+              />
+              <span className="text-xs text-text-faint font-mono">{t('dayOfMonthSuffix')}</span>
+            </div>
+
+            {/* Quick Presets */}
+            <div className="flex items-center gap-2 flex-wrap pt-1">
+              {[
+                { day: 25, key: 'presets.standard' },
+                { day: 28, key: 'presets.civil' },
+                { day: 1, key: 'presets.allowance' },
+                { day: 15, key: 'presets.midMonth' },
+              ].map(({ day, key }) => (
+                <button
+                  key={day}
+                  type="button"
+                  onClick={() => setProfile((p) => ({ ...p, paydayDayOfMonth: day }))}
+                  className={cn(
+                    'px-2.5 py-1 rounded-lg text-xs font-mono transition-colors border',
+                    (profile.paydayDayOfMonth || 25) === day
+                      ? 'bg-accent/10 text-accent border-accent/30 font-semibold'
+                      : 'bg-surface-2 text-text-muted border-border-1 hover:text-text-primary hover:border-border-2'
+                  )}
+                >
+                  {t(key as any)}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       </section>
 
@@ -514,6 +606,53 @@ export function AccountProfileSettings({ initialUser }: AccountProfileSettingsPr
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* Email Notifications (Resend Adapter) */}
+          <div className="space-y-3 pt-4 pb-4">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Mail className="w-4 h-4 text-accent" aria-hidden="true" />
+                  <span className="text-xs font-semibold text-text-primary">
+                    {t('emailReminderTitle')}
+                  </span>
+                </div>
+                <p className="text-xs text-text-muted mt-0.5">{t('emailReminderDesc')}</p>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleSendTestEmail}
+                disabled={testEmailStatus === 'sending' || !profile.email}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-surface-2 hover:bg-surface-3 border border-border-2 text-text-primary transition-all disabled:opacity-50 cursor-pointer active:scale-95"
+              >
+                {testEmailStatus === 'sending' ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-accent" aria-hidden="true" />
+                    <span>{t('testEmailSending')}</span>
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-3.5 h-3.5 text-accent" aria-hidden="true" />
+                    <span>{t('testEmailCta')}</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            {testEmailFeedback && (
+              <div
+                className={cn(
+                  'px-3 py-2 rounded-lg text-xs font-mono border',
+                  testEmailStatus === 'sent'
+                    ? 'bg-status-emerald-surface text-status-emerald-text border-status-emerald-border'
+                    : 'bg-status-rose-surface text-status-rose-text border-status-rose-border'
+                )}
+              >
+                {testEmailFeedback}
+              </div>
+            )}
           </div>
 
           {/* Default Ledger View Mode */}

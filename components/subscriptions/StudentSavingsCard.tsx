@@ -26,17 +26,36 @@ interface StudentSavingsCardProps {
 export function StudentSavingsCard({ summary }: StudentSavingsCardProps) {
   const t = useTranslations('Subscriptions.studentSavings');
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [isHydrated, setIsHydrated] = useState(false);
 
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem('baki_user_profile_v1');
-      if (stored) {
-        setProfile(JSON.parse(stored));
-      }
-    } catch {}
+    const loadProfile = () => {
+      try {
+        const stored = localStorage.getItem('baki_user_profile_v1');
+        if (stored) {
+          setProfile(JSON.parse(stored));
+        }
+      } catch {}
+      setIsHydrated(true);
+    };
+
+    loadProfile();
+
+    window.addEventListener('baki_profile_updated', loadProfile);
+    window.addEventListener('storage', loadProfile);
+    return () => {
+      window.removeEventListener('baki_profile_updated', loadProfile);
+      window.removeEventListener('storage', loadProfile);
+    };
   }, []);
 
-  if (summary.count === 0 || summary.opportunities.length === 0) {
+  // Do not show student discount opportunities for general or young professional users
+  if (isHydrated && profile && (!profile.isStudent || profile.educationTier === 'general' || profile.educationTier === 'young_professional')) {
+    return null;
+  }
+
+  // If there are no detected student savings opportunities
+  if (!summary || summary.count === 0 || summary.opportunities.length === 0) {
     return null;
   }
 
@@ -100,10 +119,10 @@ export function StudentSavingsCard({ summary }: StudentSavingsCardProps) {
               {/* Price comparison */}
               <div className="flex items-baseline justify-between text-xs pt-1 border-t border-border-1 font-mono">
                 <span className="text-text-faint">
-                  {t('currentPrice')}: <span className="line-through text-text-muted">MYR {senToMyr(opp.currentMonthlySen)}</span>
+                  {t('currentPrice')}: <span className="line-through text-text-muted">MYR {senToMyr(opp.currentMonthlySen ?? opp.currentAmountSen)}</span>
                 </span>
                 <span className="text-status-emerald-text font-medium">
-                  {t('studentPrice')}: MYR {senToMyr(opp.studentMonthlySen)}
+                  {t('studentPrice')}: MYR {senToMyr(opp.studentMonthlySen ?? opp.studentAmountSen)}
                 </span>
               </div>
 

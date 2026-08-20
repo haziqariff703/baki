@@ -10,7 +10,7 @@
  * Ledger Rule design tokens (DESIGN.md), clean mobile responsive, zero emojis.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Calendar, AlertCircle, CheckCircle2, SlidersHorizontal } from 'lucide-react';
 import {
@@ -36,8 +36,44 @@ const PRESETS = [
 
 export function PaydayAnchorStrip({ renewals, fromDate }: PaydayAnchorStripProps) {
   const t = useTranslations('CashFlow.paydayAnchor');
-  const [paydayDay, setPaydayDay] = useState<number>(25);
+  const [paydayDay, setPaydayDay] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem('baki_user_profile_v1');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (parsed.paydayDayOfMonth) return parsed.paydayDayOfMonth;
+        }
+      } catch {
+        // Fallback
+      }
+    }
+    return 25;
+  });
   const [showCustom, setShowCustom] = useState(false);
+
+  useEffect(() => {
+    const handleProfileUpdate = () => {
+      try {
+        const stored = localStorage.getItem('baki_user_profile_v1');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (parsed.paydayDayOfMonth) {
+            setPaydayDay(parsed.paydayDayOfMonth);
+          }
+        }
+      } catch {
+        // Fallback
+      }
+    };
+
+    window.addEventListener('baki_profile_updated', handleProfileUpdate);
+    window.addEventListener('storage', handleProfileUpdate);
+    return () => {
+      window.removeEventListener('baki_profile_updated', handleProfileUpdate);
+      window.removeEventListener('storage', handleProfileUpdate);
+    };
+  }, []);
 
   const analysis: PaydayAnalysis = computePaydayAnalysis(renewals, paydayDay, fromDate);
 

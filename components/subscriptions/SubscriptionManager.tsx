@@ -39,9 +39,10 @@ import { SubscriptionForm } from '@/components/subscriptions/SubscriptionForm';
 import { ScoreBreakdown } from '@/components/subscriptions/ScoreBreakdown';
 import { ScoreEvaluatorModal } from '@/components/subscriptions/ScoreEvaluatorModal';
 import { StudentSavingsCard } from '@/components/subscriptions/StudentSavingsCard';
+import { StudentStarterCatalog } from '@/components/subscriptions/StudentStarterCatalog';
 import { BrandLogo } from '@/components/subscriptions/BrandLogo';
 import { Pagination } from '@/components/shared/Pagination';
-import { detectStudentSavings } from '@/features/student-optimizer';
+import { detectStudentSavings, type StudentPreset } from '@/features/student-optimizer';
 import { cn } from '@/lib/utils';
 import { X } from 'lucide-react';
 
@@ -80,6 +81,8 @@ const RECOMMENDATION_STYLE: Record<
   },
 };
 
+const PAUSED_STORAGE_KEY = 'baki_paused_subscriptions_v1';
+
 export function SubscriptionManager({ initialSubscriptions }: SubscriptionManagerProps) {
   const t = useTranslations('Subscriptions');
   const tDash = useTranslations('Dashboard');
@@ -106,11 +109,37 @@ export function SubscriptionManager({ initialSubscriptions }: SubscriptionManage
 
   // Sync with user profile student tier (§1.1 / §8.1)
   useEffect(() => {
+    const loadProfile = () => {
+      try {
+        const stored = localStorage.getItem('baki_user_profile_v1');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          setIsStudent(Boolean(parsed.isStudent && parsed.educationTier === 'tertiary_student'));
+        }
+      } catch {
+        // Fallback
+      }
+    };
+
+    loadProfile();
+
+    window.addEventListener('baki_profile_updated', loadProfile);
+    window.addEventListener('storage', loadProfile);
+    return () => {
+      window.removeEventListener('baki_profile_updated', loadProfile);
+      window.removeEventListener('storage', loadProfile);
+    };
+  }, []);
+
+  // Load persisted paused subscription IDs from storage
+  useEffect(() => {
     try {
-      const stored = localStorage.getItem('baki_user_profile_v1');
+      const stored = localStorage.getItem(PAUSED_STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);
-        setIsStudent(Boolean(parsed.isStudent));
+        if (Array.isArray(parsed)) {
+          setPausedIds(new Set(parsed));
+        }
       }
     } catch {
       // Fallback
@@ -124,8 +153,20 @@ export function SubscriptionManager({ initialSubscriptions }: SubscriptionManage
   function togglePause(id: string) {
     setPausedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      try {
+        localStorage.setItem(
+          PAUSED_STORAGE_KEY,
+          JSON.stringify(Array.from(next)),
+        );
+        window.dispatchEvent(new Event('baki_paused_subscriptions_updated'));
+      } catch {
+        // Fallback
+      }
       return next;
     });
   }
@@ -259,6 +300,22 @@ export function SubscriptionManager({ initialSubscriptions }: SubscriptionManage
     }
   }
 
+  function handleQuickAddPreset(preset: StudentPreset) {
+    const newSub: SubscriptionSchema = {
+      id: `sub-preset-${Date.now()}`,
+      merchantName: preset.name,
+      amountSen: preset.studentPriceSen,
+      cycle: 'monthly',
+      nextChargeDate: new Date(Date.now() + 30 * 86400000).toISOString(),
+      usage: preset.defaultScoreBreakdown.usage,
+      necessity: preset.defaultScoreBreakdown.necessity,
+      affordability: preset.defaultScoreBreakdown.affordability,
+      uniqueness: preset.defaultScoreBreakdown.uniqueness,
+      satisfaction: preset.defaultScoreBreakdown.satisfaction,
+    };
+    handleSave(newSub);
+  }
+
   async function handleSaveRatings(id: string, newRatings: ScoreInput) {
     const prevSubs = [...subscriptions];
 
@@ -291,6 +348,22 @@ export function SubscriptionManager({ initialSubscriptions }: SubscriptionManage
 
     setSubscriptions((prev) => prev.filter((s) => s.id !== id));
     setPendingDeleteId(null);
+
+    setPausedIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      try {
+        localStorage.setItem(
+          PAUSED_STORAGE_KEY,
+          JSON.stringify(Array.from(next)),
+        );
+        window.dispatchEvent(new Event('baki_paused_subscriptions_updated'));
+      } catch {
+        // Fallback
+      }
+      return next;
+    });
 
     try {
       const res = await fetch(`/api/subscriptions/${id}`, {
@@ -348,6 +421,12 @@ export function SubscriptionManager({ initialSubscriptions }: SubscriptionManage
     <div className="space-y-6">
       {/* Student Discount Optimizer Banner */}
       <StudentSavingsCard summary={studentSavingsSummary} />
+
+      {/* Malaysian Student Starter Pack 1-Tap Add Grid */}
+      <StudentStarterCatalog
+        onSelectPreset={handleQuickAddPreset}
+        existingMerchantNames={subscriptions.map((s) => s.merchantName)}
+      />
 
       {/* Filter + search + sort + actions bar */}
       <div className="space-y-3">
@@ -522,7 +601,7 @@ export function SubscriptionManager({ initialSubscriptions }: SubscriptionManage
               }}
               className="text-xs text-accent hover:underline font-medium"
             >
-              Reset search filter
+              {t('resetSearch')}
             </button>
           )}
         </div>
@@ -633,7 +712,7 @@ export function SubscriptionManager({ initialSubscriptions }: SubscriptionManage
                       className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-border-2 bg-surface-1 hover:bg-surface-3 text-text-secondary hover:text-accent text-xs font-medium transition-colors shrink-0"
                     >
                       <Calculator className="w-3.5 h-3.5" aria-hidden="true" />
-                      <span className="hidden xs:inline">Evaluate</span>
+                      <span className="hidden xs:inline">{t('evaluateCta')}</span>
                     </button>
                   </div>
 
@@ -643,13 +722,13 @@ export function SubscriptionManager({ initialSubscriptions }: SubscriptionManage
                       {isEssentialSafeguard && (
                         <p className="text-[11px] text-status-blue-text bg-status-blue-surface border border-status-blue-border rounded-lg px-2.5 py-1 flex items-center gap-1.5">
                           <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
-                          <span>Essential safeguard: Review cheaper plan rather than cancelling.</span>
+                          <span>{t('evaluator.safeguardDesc')}</span>
                         </p>
                       )}
                       {hasUsageInconsistency && (
                         <p className="text-[11px] text-status-amber-text bg-status-amber-surface border border-status-amber-border rounded-lg px-2.5 py-1 flex items-center gap-1.5">
                           <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                          <span>Inconsistency: High score recorded despite infrequent usage.</span>
+                          <span>{t('usageInconsistency')}</span>
                         </p>
                       )}
                     </div>

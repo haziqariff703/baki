@@ -16,9 +16,12 @@
 import Papa from 'papaparse';
 
 import { importRowSchema, type ImportRowSchema } from '@/lib/validation';
-import { myrToSen } from '@/lib/money';
 import { sanitizeMerchantName } from './sanitize';
 import { canonicalMerchantName } from '@/features/subscriptions';
+import {
+  parseFlexibleAmount,
+  parseFlexibleDate,
+} from './bankStatementParser';
 
 /** Maximum number of data rows (excluding the header) to accept. */
 export const MAX_CSV_ROWS = 1000;
@@ -55,8 +58,13 @@ const HEADER_ALIASES: Record<'merchantName' | 'amountSen' | 'transactionDate', r
     'merchant_name',
     'transaction description',
     'transaction details',
+    'transaction narrative',
     'details',
     'item',
+    'keterangan',
+    'butiran',
+    'maklumat transaksi',
+    'transaksi',
   ],
   amountSen: [
     'amount',
@@ -76,6 +84,12 @@ const HEADER_ALIASES: Record<'merchantName' | 'amountSen' | 'transactionDate', r
     'debit (rm)',
     'debit amount',
     'txn amount',
+    'debit/credit',
+    'debit / credit',
+    'jumlah',
+    'jumlah (rm)',
+    'pengeluaran',
+    'withdrawal',
   ],
   transactionDate: [
     'date',
@@ -87,6 +101,11 @@ const HEADER_ALIASES: Record<'merchantName' | 'amountSen' | 'transactionDate', r
     'date posted',
     'date_posted',
     'posting date',
+    'post date',
+    'entry date',
+    'tarikh',
+    'tarikh transaksi',
+    'value date',
   ],
 };
 
@@ -104,60 +123,26 @@ function resolveField(header: string, canonical: keyof typeof HEADER_ALIASES): b
 }
 
 /**
- * Convert a raw amount cell to integer sen. Accepts "15.90", "1590", "15.9", "RM 15.90".
- * Returns null if it is not a positive, well-formed MYR amount.
+ * Convert a raw amount cell to integer sen using Malaysian bank format parser.
  */
 function amountCellToSen(raw: unknown): number | null {
   if (typeof raw !== 'string' && typeof raw !== 'number') return null;
-  const text = String(raw)
-    .trim()
-    .replace(/^(?:RM|MYR)\s*/i, '')
-    .replace(/,/g, '');
-  return myrToSen(text);
+  return parseFlexibleAmount(String(raw));
 }
 
 /**
- * Convert a raw date cell to an ISO 8601 UTC timestamp.
- *
- * Accepts common statement formats: "2026-07-01", "01/07/2026" (day/month/year),
- * "07/01/2026" is NOT auto-disambiguated — we require a recognised ISO or
- * unambiguous day-first format. Returns null if unrecognised.
+ * Convert a raw date cell to an ISO 8601 UTC timestamp using flexible Malaysian date parser.
  */
 function dateCellToIso(raw: unknown): string | null {
   if (typeof raw !== 'string' && typeof raw !== 'number') return null;
-  const text = String(raw).trim();
-  if (!text) return null;
-
-  // ISO date (YYYY-MM-DD) — treat as UTC midnight.
-  const isoMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
-  if (isoMatch) {
-    const [, year, month, day] = isoMatch;
-    const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
-    if (Number.isNaN(date.getTime())) return null;
-    return date.toISOString();
-  }
-
-  // Day-first: DD/MM/YYYY or DD-MM-YYYY.
-  const dmyMatch = /^(\d{2})[/-](\d{2})[/-](\d{4})$/.exec(text);
-  if (dmyMatch) {
-    const [, day, month, year] = dmyMatch;
-    const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
-    if (Number.isNaN(date.getTime())) return null;
-    return date.toISOString();
-  }
-
-  // Last resort: let Date.parse try; validate the result is a real date.
-  const time = Date.parse(text);
-  if (Number.isNaN(time)) return null;
-  return new Date(time).toISOString();
+  return parseFlexibleDate(String(raw));
 }
 
 /**
  * Parse CSV text into validated import rows.
  *
- * Returns `{ rows, errors, truncated }`. Malformed rows are reported in
- * `errors` and never abort the whole parse. Input is treated as untrusted; all
- * merchant names are sanitised and every row re-validated by importRowSchema.
+ * Scans preamble rows (supporting Maybank and CIMB CSV statement header formats),
+ * converts amounts to integer sen, and validates every row with importRowSchema.
  */
 export function parseCsv(text: string): CsvParseResult {
   const parsed = Papa.parse<string[]>(text, {
@@ -165,7 +150,6 @@ export function parseCsv(text: string): CsvParseResult {
   });
 
   if (parsed.errors.length > 0) {
-    // Structural errors (quoting, delimiters) — fail the parse.
     return {
       rows: [],
       errors: parsed.errors.map((e) => ({
@@ -181,19 +165,31 @@ export function parseCsv(text: string): CsvParseResult {
     return { rows: [], errors: [], truncated: false };
   }
 
-  const headerRow = data[0];
-  // Find the canonical column index for each required field.
-  const colIndex: { merchantName: number; amountSen: number; transactionDate: number } = {
-    merchantName: headerRow.findIndex((h) => resolveField(h, 'merchantName')),
-    amountSen: headerRow.findIndex((h) => resolveField(h, 'amountSen')),
-    transactionDate: headerRow.findIndex((h) => resolveField(h, 'transactionDate')),
+  // Scan up to the first 15 rows to find the actual table header (handles bank statement preamble)
+  let headerRowIndex = -1;
+  let colIndex: { merchantName: number; amountSen: number; transactionDate: number } = {
+    merchantName: -1,
+    amountSen: -1,
+    transactionDate: -1,
   };
 
-  if (
-    colIndex.merchantName < 0 ||
-    colIndex.amountSen < 0 ||
-    colIndex.transactionDate < 0
-  ) {
+  const scanLimit = Math.min(data.length, 15);
+  for (let r = 0; r < scanLimit; r += 1) {
+    const row = data[r];
+    if (!Array.isArray(row)) continue;
+
+    const mIdx = row.findIndex((h) => resolveField(h, 'merchantName'));
+    const aIdx = row.findIndex((h) => resolveField(h, 'amountSen'));
+    const dIdx = row.findIndex((h) => resolveField(h, 'transactionDate'));
+
+    if (mIdx >= 0 && aIdx >= 0 && dIdx >= 0) {
+      headerRowIndex = r;
+      colIndex = { merchantName: mIdx, amountSen: aIdx, transactionDate: dIdx };
+      break;
+    }
+  }
+
+  if (headerRowIndex < 0) {
     return {
       rows: [],
       errors: [
@@ -211,37 +207,28 @@ export function parseCsv(text: string): CsvParseResult {
   const errors: CsvRowError[] = [];
   let truncated = false;
 
-  for (let i = 1; i < data.length; i += 1) {
-    // `dataRow` is the 1-based physical line number (1 is the header row),
-    // so the first data row is dataRow = 2.
+  for (let i = headerRowIndex + 1; i < data.length; i += 1) {
     const dataRow = i + 1;
 
     // Enforce the row cap: skip rows beyond MAX_CSV_ROWS data rows.
-    if (dataRow - 1 > MAX_CSV_ROWS) {
+    if (dataRow - headerRowIndex - 1 > MAX_CSV_ROWS) {
       truncated = true;
       break;
     }
 
     const line = data[i];
-
-    // Empty trailing lines after greedy skip should not normally occur, but
-    // guard against a fully empty row.
     if (!line || line.every((cell) => !String(cell).trim())) continue;
 
     const rawMerchant = line[colIndex.merchantName];
     const rawAmount = line[colIndex.amountSen];
     const rawDate = line[colIndex.transactionDate];
 
-    // Sanitise (prompt-injection + length), then canonicalize to a brand key
-    // so imported names resolve to logos deterministically (§2.1). Sanitise
-    // first so the alias/normalization only ever sees clean, data-only text.
     const merchantName = canonicalMerchantName(
       sanitizeMerchantName(String(rawMerchant ?? '')),
     );
     const amountSen = amountCellToSen(rawAmount);
     const transactionDate = dateCellToIso(rawDate);
 
-    // Clear, user-safe error message for invalid amounts (not a raw float).
     if (amountSen === null) {
       errors.push({
         row: dataRow,

@@ -111,7 +111,12 @@ export async function runImport(opts: {
   }
 
   // Store the raw file in the private bucket first (§12), then parse.
-  const storagePath = await storage.upload(userId, source, bytes);
+  let storagePath: string | null = null;
+  try {
+    storagePath = await storage.upload(userId, source, bytes);
+  } catch (storageErr) {
+    console.warn('[runImport] Storage upload warning (continuing with extraction):', storageErr);
+  }
 
   const { rows, errors, truncated } = await parseFile(source, bytes);
 
@@ -150,7 +155,13 @@ export async function runImport(opts: {
     );
 
     // Purge the raw file immediately after successful extraction (§12).
-    await storage.remove(storagePath);
+    if (storagePath) {
+      try {
+        await storage.remove(storagePath);
+      } catch {
+        // ignore
+      }
+    }
     await importRepo.markPurged(userId, ledger.id);
 
     return {
@@ -160,13 +171,16 @@ export async function runImport(opts: {
       truncated,
       importedCount: rowCount,
     };
-  } catch {
+  } catch (persistErr) {
+    console.error('[runImport] Transaction persistence error:', persistErr);
     // Persistence failed — still best-effort purge the raw file so no statement
     // lingers (§12). Surface a non-sensitive failure; no file bytes/merchants.
-    try {
-      await storage.remove(storagePath);
-    } catch {
-      // leave for ops cleanup
+    if (storagePath) {
+      try {
+        await storage.remove(storagePath);
+      } catch {
+        // leave for ops cleanup
+      }
     }
     throw new Error('FILE_PROCESSING_FAILED');
   }

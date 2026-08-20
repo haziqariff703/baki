@@ -16,7 +16,7 @@
 
 import { useState, useCallback, useSyncExternalStore, type KeyboardEvent, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
-import Navbar, { SearchField } from '@/components/shared/Navbar';
+import Navbar from '@/components/shared/Navbar';
 import { SearchProvider } from '@/components/shared/SearchContext';
 import { AppSidebar } from '@/components/layout/AppSidebar';
 import { cn } from '@/lib/utils';
@@ -153,9 +153,6 @@ export function AppShell({ title, children }: AppShellProps) {
               )}
             >
               <div className="flex flex-col h-full">
-                <div className="p-3 border-b border-border-1 md:hidden">
-                  <SearchField id="mobile-search" />
-                </div>
                 <div className="flex-1 overflow-y-auto p-3">
                   {/* Forced expanded in the drawer so groups + labels are always
                       visible on mobile regardless of the persisted desktop

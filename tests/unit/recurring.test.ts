@@ -275,6 +275,42 @@ describe('detectRecurringCadence (§2.1 deterministic cadence detection)', () =>
     expect(candidates).toHaveLength(0);
   });
 
+  it('ignores frequent dining, groceries, reloads, and transfers even with multiple occurrences', () => {
+    const transactions = [
+      // 3x Mamak meals spaced 2 days apart
+      { id: '1', merchantName: 'Restoran Nasi Kandar Pelita', amountSen: 1450, transactionDate: '2026-08-01T00:00:00.000Z' },
+      { id: '2', merchantName: 'Restoran Nasi Kandar Pelita', amountSen: 1800, transactionDate: '2026-08-03T00:00:00.000Z' },
+      { id: '3', merchantName: 'Restoran Nasi Kandar Pelita', amountSen: 1250, transactionDate: '2026-08-05T00:00:00.000Z' },
+      // 2x 99 Speedmart runs
+      { id: '4', merchantName: '99 Speedmart Setapak', amountSen: 2340, transactionDate: '2026-08-02T00:00:00.000Z' },
+      { id: '5', merchantName: '99 Speedmart Setapak', amountSen: 4500, transactionDate: '2026-08-10T00:00:00.000Z' },
+      // 3x Touch 'n Go reloads
+      { id: '6', merchantName: 'TNG Reload E-Wallet', amountSen: 5000, transactionDate: '2026-08-01T00:00:00.000Z' },
+      { id: '7', merchantName: 'TNG Reload E-Wallet', amountSen: 5000, transactionDate: '2026-08-07T00:00:00.000Z' },
+      // 2x DuitNow transfers
+      { id: '8', merchantName: 'DuitNow Transfer to Ahmad', amountSen: 10000, transactionDate: '2026-08-04T00:00:00.000Z' },
+      { id: '9', merchantName: 'DuitNow Transfer to Ahmad', amountSen: 5000, transactionDate: '2026-08-12T00:00:00.000Z' },
+    ];
+
+    const candidates = detectRecurringCadence(transactions);
+    expect(candidates).toHaveLength(0);
+  });
+
+  it('detects uncataloged recurring commitments with monthly cadence and identical amounts', () => {
+    const transactions = [
+      { id: '1', merchantName: 'Sewa Bilik Kondominium', amountSen: 65000, transactionDate: '2026-06-01T00:00:00.000Z' },
+      { id: '2', merchantName: 'Sewa Bilik Kondominium', amountSen: 65000, transactionDate: '2026-07-01T00:00:00.000Z' },
+      { id: '3', merchantName: 'Sewa Bilik Kondominium', amountSen: 65000, transactionDate: '2026-08-01T00:00:00.000Z' },
+    ];
+
+    const candidates = detectRecurringCadence(transactions);
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0].merchantName).toBe('Sewa Bilik Kondominium');
+    expect(candidates[0].amountSen).toBe(65000);
+    expect(candidates[0].occurrenceCount).toBe(3);
+    expect(candidates[0].intervalDays).toBeGreaterThanOrEqual(28);
+  });
+
   it('detects known catalog subscriptions even from a single-month statement', () => {
     const transactions = [
       { id: '1', merchantName: 'SPTF*SPOTIFY MALAYSIA', amountSen: 1590, transactionDate: '2026-08-01T00:00:00.000Z' },

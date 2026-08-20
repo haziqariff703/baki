@@ -103,9 +103,19 @@ export function CandidateQueue({ initialCandidates }: QueueProps) {
 
   const safeSelectedIndex = Math.min(selectedIndex, Math.max(0, sortedPending.length - 1));
 
-  // Keep state in sync if parent server props revalidate or hydrate
+  // Keep state in sync if parent server props revalidate or hydrate, and fetch fresh candidates on mount
   useEffect(() => {
     setCandidates(initialCandidates);
+
+    // Fetch live candidates from database to ensure fresh state after imports
+    fetch('/api/recurring-candidates')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && Array.isArray(data.candidates)) {
+          setCandidates(data.candidates);
+        }
+      })
+      .catch(() => {});
   }, [initialCandidates]);
 
   // Auto-dismiss the undo toast after ~5s
@@ -246,58 +256,6 @@ export function CandidateQueue({ initialCandidates }: QueueProps) {
 
           {/* AI-confidence summary + transparency panel */}
           <ConfidencePanel candidates={pending} />
-
-          {/* Confirmed subscriptions */}
-          {confirmed.length > 0 && (
-            <section aria-label={t('confirmedLabel')} className="space-y-3">
-              <h2 className="text-xs font-mono uppercase tracking-wider text-text-faint">
-                {t('confirmedHeading')} · {confirmed.length}
-              </h2>
-              <ul className="divide-y divide-border-1 border border-border-1 rounded-xl bg-surface-1">
-                {confirmed.map((c) => (
-                  <li key={c.id} className="flex items-center justify-between px-5 py-3">
-                    <div className="flex items-center gap-2.5">
-                      <CheckCircle2 className="w-4 h-4 text-status-emerald-text shrink-0" />
-                      <BrandLogo merchantName={c.merchantName} size={20} />
-                      <span className="text-sm text-text-primary">{c.merchantName}</span>
-                      <span className="font-mono text-xs uppercase tracking-wider text-status-emerald-text">
-                        {t('stampConfirmed')}
-                      </span>
-                    </div>
-                    <span className="font-mono text-sm text-text-primary">
-                      MYR {formatAmount(c.amountSen)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
-
-          {/* Rejected */}
-          {rejected.length > 0 && (
-            <section aria-label={t('dismissedLabel')} className="space-y-3">
-              <h2 className="text-xs font-mono uppercase tracking-wider text-text-faint">
-                {t('dismissedHeading')} · {rejected.length}
-              </h2>
-              <ul className="divide-y divide-border-1 border border-border-1 rounded-xl bg-surface-1 opacity-60">
-                {rejected.map((c) => (
-                  <li key={c.id} className="flex items-center justify-between px-5 py-3">
-                    <div className="flex items-center gap-2.5">
-                      <XCircle className="w-4 h-4 text-text-faint shrink-0" />
-                      <BrandLogo merchantName={c.merchantName} size={20} />
-                      <span className="text-sm text-text-muted line-through">{c.merchantName}</span>
-                      <span className="font-mono text-xs uppercase tracking-wider text-text-faint">
-                        {t('stampDismissed')}
-                      </span>
-                    </div>
-                    <span className="font-mono text-sm text-text-faint">
-                      MYR {formatAmount(c.amountSen)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
         </div>
 
         {/* Right Column: Actionable Pending Candidates */}

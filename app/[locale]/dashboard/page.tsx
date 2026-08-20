@@ -18,6 +18,9 @@ import { ScoreDistribution } from '@/components/dashboard/ScoreDistribution';
 import { TrendSparkline, TrendSummary } from '@/components/dashboard/TrendSparkline';
 import { OnboardingChecklist } from '@/components/dashboard/OnboardingChecklist';
 import { CategoryBreakdown } from '@/components/dashboard/CategoryBreakdown';
+import { DailyBurnWidget } from '@/components/cash-flow/DailyBurnWidget';
+import { StudentSavingsCard } from '@/components/subscriptions/StudentSavingsCard';
+import { detectStudentSavings } from '@/features/student-optimizer';
 import {
   averageScore,
   buildAlerts,
@@ -119,6 +122,7 @@ export default async function DashboardPage() {
   const forecast = renewalForecast(realRenewals, SYNTHETIC_TODAY);
   const savings = savingsOpportunities(scored);
   const trend = spendingTrend(summary.monthlyCommitmentSen);
+  const studentSavings = detectStudentSavings(initialSubscriptions, true);
   const alerts = buildAlerts(
     realRenewals,
     SYNTHETIC_TODAY,
@@ -227,6 +231,12 @@ export default async function DashboardPage() {
               </li>
             </ul>
           </section>
+
+          {/* Student Discount Opportunities (if any active sub qualifies) */}
+          <StudentSavingsCard summary={studentSavings} />
+
+          {/* Daily Burn Rate & Teh Tarik Lifestyle Baseline */}
+          <DailyBurnWidget monthlyTotalSen={summary.monthlyCommitmentSen} />
 
           {/* Alerts panel */}
           <section aria-labelledby="alerts-heading" className="space-y-3">

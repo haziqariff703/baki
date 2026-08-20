@@ -268,6 +268,17 @@
         }
       }
     },
+    "starterPack": {
+      "title": "Malaysian Student Starter Pack",
+      "subtitle": "Select the subscriptions you already pay for to instantly populate your dashboard and unlock student savings.",
+      "tag": "1-Tap Add",
+      "studentRate": "Student Rate:",
+      "quickAdd": "Quick Add",
+      "added": "Added to Baki"
+    },
+    "resetSearch": "Reset search filter",
+    "usageInconsistency": "Inconsistency: High score recorded despite infrequent usage.",
+    "evaluateCta": "Evaluate",
     "studentSavings": {
       "title": "Student Discounts Available",
       "subtitle": "Switch your active subscriptions to verified student pricing and keep more ringgit in your wallet.",
@@ -279,6 +290,13 @@
       "applyCta": "Apply student deal",
       "emptyNotice": "No eligible student discounts detected for your active subscriptions."
     }
+  },
+  "DailyBurn": {
+    "title": "Daily Burn Rate",
+    "average30Days": "30-day average",
+    "perDay": "/ day",
+    "committedMonthly": "Committed across MYR {amount} monthly recurring bills.",
+    "tehTarikCallout": "That is equal to ~{count} Teh Tarik every single day."
   },
   "Imports": {
     "title": "Import statements & receipts",
@@ -346,12 +364,28 @@
     "monthlyBudgetLabel": "Monthly budget (MYR)",
     "dailyEquivalentLabel": "About MYR {daily} per day.",
     "errorBudget": "Enter a valid budget amount in MYR.",
+    "paydayTitle": "Payday & Allowance Anchor",
+    "paydayDesc": "Day of the month your salary or allowance is credited (1st–31st).",
+    "paydayLabel": "Payday day of month",
+    "dayOfMonthSuffix": "day of each month",
+    "presets": {
+      "standard": "25th (Private Salary)",
+      "civil": "28th (Govt / Civil)",
+      "allowance": "1st (Allowance)",
+      "midMonth": "15th (Mid-Month)"
+    },
     "preferencesHeading": "Reminders & Display",
     "renewalLeadTimeTitle": "Renewal reminders",
     "renewalLeadTimeDesc": "When should we remind you before a subscription renews?",
     "reminder7Days": "7 days before",
     "reminder3Days": "3 days before",
     "reminder1Day": "1 day before",
+    "emailReminderTitle": "Email notifications (Resend)",
+    "emailReminderDesc": "Receive automated renewal warnings directly to your inbox.",
+    "testEmailCta": "Send test reminder",
+    "testEmailSending": "Sending...",
+    "testEmailSent": "Test reminder sent to {recipient}",
+    "testEmailFailed": "Failed to send: {error}",
     "defaultViewModeTitle": "Show subscription prices as",
     "defaultViewModeDesc": "Choose how prices appear across the dashboard and lists.",
     "viewModeActual": "Actual bill",
@@ -442,6 +476,10 @@
     "dueIn": "Due in {days} days",
     "dueToday": "Due today",
     "dueTomorrow": "Due tomorrow",
+    "markRead": "Mark as read",
+    "markUnread": "Mark as unread",
+    "markAllRead": "Mark all as read",
+    "acknowledged": "Acknowledged",
     "timelineHeading": "Reminder timeline",
     "timelineSub": "When each reminder fires relative to the charge date",
     "timelineAria": "Reminder timing per upcoming renewal",
@@ -508,6 +546,10 @@
       }
     },
     "printCta": "Print / Save PDF",
+    "previewTitle": "Cash-Flow Statement Preview",
+    "previewSubtitle": "Official monthly subscription audit and cash-flow report.",
+    "printConfirmCta": "Print / Save as PDF",
+    "closePreview": "Close preview",
     "printHeader": "Monthly Cash-Flow Statement",
     "printGenerated": "Generated on {date} · Confidential personal financial summary"
   },

@@ -23,7 +23,14 @@ import {
   Sparkles,
   type LucideIcon,
 } from 'lucide-react';
-import { parseCsv, parsePdfText, parseReceiptLines, MAX_CSV_ROWS, MAX_PDF_PAGES } from '@/features/imports';
+import {
+  parseCsv,
+  parsePdfText,
+  extractTransactionsFromText,
+  parseReceiptLines,
+  MAX_CSV_ROWS,
+  MAX_PDF_PAGES,
+} from '@/features/imports';
 import { uploadedFileSchema, type ImportRowSchema } from '@/lib/validation';
 import { MAX_UPLOAD_SIZE_BYTES } from '@/lib/validation/imports';
 import { senToMyr } from '@/lib/money';
@@ -74,9 +81,45 @@ export function ImportWizard() {
     candidatesCount: number;
   } | null>(null);
   const [previewPage, setPreviewPage] = useState(1);
+  const [pdfPassword, setPdfPassword] = useState('');
+  const [showPasswordPrompt, setShowPasswordPrompt] = useState(false);
+  const [activeTab, setActiveTab] = useState<'upload' | 'paste'>('upload');
+  const [pastedText, setPastedText] = useState('');
   const PREVIEW_PAGE_SIZE = 10;
 
-  async function handleFile(file: File) {
+  function handleParsePastedText() {
+    if (!pastedText.trim()) return;
+    const text = pastedText.trim();
+    setStatus({ state: 'parsing', fileName: 'Pasted Statement' });
+
+    let rows: ImportRowSchema[] = [];
+    // If it looks like CSV:
+    if (text.includes(',') && text.split('\n').length > 1) {
+      const csvRes = parseCsv(text);
+      if (csvRes.rows.length > 0) {
+        rows = [...csvRes.rows];
+      }
+    }
+
+    // Universal stream segmenter fallback:
+    if (rows.length === 0) {
+      rows = extractTransactionsFromText(text);
+    }
+
+    setStatus({
+      state: 'done',
+      fileName: 'Pasted Statement',
+      outcome: {
+        kind: 'pdf',
+        rows,
+        errors: [],
+        truncated: false,
+        empty: rows.length === 0,
+      },
+    });
+  }
+
+  async function handleFile(file: File, customPassword?: string) {
     const descriptor = uploadedFileSchema.safeParse({
       name: file.name,
       size: file.size,
@@ -97,6 +140,7 @@ export function ImportWizard() {
     setStatus({ state: 'parsing', fileName });
     setErrorsOpen(false);
     setPersistMsg(null);
+    setShowPasswordPrompt(false);
 
     try {
       if (file.type === 'text/csv') {
@@ -127,7 +171,16 @@ export function ImportWizard() {
         });
       } else {
         const buffer = await file.arrayBuffer();
-        const result = await parsePdfText(buffer);
+        const pwd = customPassword || pdfPassword || undefined;
+        const result = await parsePdfText(buffer, pwd);
+
+        const isPasswordIssue = result.errors.some((e) =>
+          e.error.toLowerCase().includes('password') || e.error.toLowerCase().includes('ic number'),
+        );
+        if (isPasswordIssue) {
+          setShowPasswordPrompt(true);
+        }
+
         const errors: RowError[] = result.errors.map((e) => ({
           label: t('errorPageLabel', { page: e.page }),
           message: e.error,
@@ -149,20 +202,27 @@ export function ImportWizard() {
     }
   }
 
-  /** Upload the original file to the backend for authoritative persist + purge. */
+  async function handleUnlockPdf(e: React.FormEvent) {
+    e.preventDefault();
+    if (!fileRef.current || !pdfPassword) return;
+    await handleFile(fileRef.current, pdfPassword);
+  }
+
+  /** Upload the validated transactions to the backend for authoritative persist + purge. */
   async function persist(): Promise<void> {
     let file = fileRef.current;
 
-    // If fileRef is empty, synthesize a CSV File from outcome.rows
-    if (!file && outcome && outcome.rows.length > 0) {
+    // Always synthesize a clean CSV File from the validated outcome.rows
+    // Ensures server import is 100% reliable even for encrypted PDFs and direct text paste.
+    if (outcome && outcome.rows.length > 0) {
       const csvHeader = 'Date,Description,Amount\n';
       const csvLines = outcome.rows
         .map(
           (r) =>
-            `"${toDatePart(r.transactionDate)}","${r.merchantName}",${(r.amountSen / 100).toFixed(2)}`,
+            `"${toDatePart(r.transactionDate)}","${r.merchantName.replace(/"/g, '""')}",${(r.amountSen / 100).toFixed(2)}`,
         )
         .join('\n');
-      file = new File([csvHeader + csvLines], status.state === 'done' ? status.fileName : 'statement.csv', {
+      file = new File([csvHeader + csvLines], 'statement.csv', {
         type: 'text/csv',
       });
       fileRef.current = file;
@@ -251,59 +311,116 @@ export function ImportWizard() {
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-      {/* Dropzone & Presets - Left Column */}
+      {/* Dropzone, Text Paste & Presets - Left Column */}
       <div className="lg:col-span-5 space-y-4">
-        <div
-          onDragOver={(e) => {
-            e.preventDefault();
-            setDragActive(true);
-          }}
-          onDragLeave={() => setDragActive(false)}
-          onDrop={onDrop}
-          className={cn(
-            'bg-surface-1 border border-dashed rounded-xl p-8 md:p-12 flex flex-col items-center justify-center text-center space-y-4 transition-colors',
-            dragActive ? 'border-accent bg-surface-2' : 'border-border-2',
-          )}
-        >
-          <UploadCloud className="w-8 h-8 text-text-faint" aria-hidden="true" />
-          <div className="space-y-1">
-            <p className="text-base font-semibold text-text-primary">{t('dropzoneTitle')}</p>
-            <p className="text-sm text-text-muted">
-              {t('dropzoneHint', { maxSize: MAX_SIZE_MB })}
-            </p>
-          </div>
-
-          <input
-            ref={inputRef}
-            type="file"
-            accept=".csv,.pdf,.png,.jpg,.jpeg,.webp,text/csv,application/pdf,image/png,image/jpeg,image/webp"
-            onChange={onInputChange}
-            className="sr-only"
-            aria-label={t('browseCta')}
-          />
+        {/* Method Selector Tabs */}
+        <div className="flex p-1 bg-surface-2 border border-border-2 rounded-xl text-xs font-medium">
           <button
             type="button"
-            onClick={() => inputRef.current?.click()}
-            disabled={parsing}
-            className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl border border-border-3 bg-surface-3 text-text-primary text-sm font-medium hover:bg-surface-2 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent disabled:opacity-50 min-h-[40px]"
-          >
-            {parsing ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
-                {t('parsing')}
-              </>
-            ) : (
-              t('browseCta')
+            onClick={() => setActiveTab('upload')}
+            className={cn(
+              'flex-1 py-1.5 rounded-lg text-center transition-all',
+              activeTab === 'upload'
+                ? 'bg-surface-1 text-text-primary shadow-xs font-semibold'
+                : 'text-text-muted hover:text-text-primary',
             )}
+          >
+            Upload Statement (PDF / CSV)
           </button>
-
-          {status.state === 'error' && (
-            <p role="alert" className="text-xs text-status-rose-text flex items-center gap-1.5">
-              <AlertTriangle className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-              {status.message}
-            </p>
-          )}
+          <button
+            type="button"
+            onClick={() => setActiveTab('paste')}
+            className={cn(
+              'flex-1 py-1.5 rounded-lg text-center transition-all',
+              activeTab === 'paste'
+                ? 'bg-surface-1 text-text-primary shadow-xs font-semibold'
+                : 'text-text-muted hover:text-text-primary',
+            )}
+          >
+            Paste Text Directly
+          </button>
         </div>
+
+        {activeTab === 'upload' ? (
+          <div
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragActive(true);
+            }}
+            onDragLeave={() => setDragActive(false)}
+            onDrop={onDrop}
+            className={cn(
+              'bg-surface-1 border border-dashed rounded-xl p-8 md:p-12 flex flex-col items-center justify-center text-center space-y-4 transition-colors',
+              dragActive ? 'border-accent bg-surface-2' : 'border-border-2',
+            )}
+          >
+            <UploadCloud className="w-8 h-8 text-text-faint" aria-hidden="true" />
+            <div className="space-y-1">
+              <p className="text-base font-semibold text-text-primary">{t('dropzoneTitle')}</p>
+              <p className="text-sm text-text-muted">
+                {t('dropzoneHint', { maxSize: MAX_SIZE_MB })}
+              </p>
+            </div>
+
+            <input
+              ref={inputRef}
+              type="file"
+              accept=".csv,.pdf,.png,.jpg,.jpeg,.webp,text/csv,application/pdf,image/png,image/jpeg,image/webp"
+              onChange={onInputChange}
+              className="sr-only"
+              aria-label={t('browseCta')}
+            />
+            <button
+              type="button"
+              onClick={() => inputRef.current?.click()}
+              disabled={parsing}
+              className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl border border-border-3 bg-surface-3 text-text-primary text-sm font-medium hover:bg-surface-2 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent disabled:opacity-50 min-h-[40px]"
+            >
+              {parsing ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+                  {t('parsing')}
+                </>
+              ) : (
+                t('browseCta')
+              )}
+            </button>
+
+            {status.state === 'error' && (
+              <p role="alert" className="text-xs text-status-rose-text flex items-center gap-1.5">
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                {status.message}
+              </p>
+            )}
+          </div>
+        ) : (
+          <div className="bg-surface-1 border border-border-2 rounded-xl p-5 space-y-3">
+            <div className="space-y-1">
+              <p className="text-sm font-semibold text-text-primary">Paste Bank Statement Lines</p>
+              <p className="text-xs text-text-muted">
+                Copy and paste transaction text from Maybank2u, MAE, CIMB Clicks, or bank email receipts below:
+              </p>
+            </div>
+            <textarea
+              rows={6}
+              value={pastedText}
+              onChange={(e) => setPastedText(e.target.value)}
+              placeholder="e.g.&#10;01/08/2026 CELCOM MOBILE SDN BHD 60.00-&#10;02/08/2026 SPOTIFY MALAYSIA 15.90-&#10;04/08/2026 NETFLIX COM 55.00-&#10;05/08/2026 WARUNG MAK TIMAH 12.00-"
+              className="w-full p-3 text-xs font-mono bg-surface-2 border border-border-2 rounded-xl text-text-primary focus:outline-none focus:border-accent resize-y"
+            />
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={handleParsePastedText}
+                disabled={!pastedText.trim() || parsing}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-accent text-accent-fg text-xs font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
+              >
+                {parsing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                Parse Transactions
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* 1-Click Sample Malaysian Presets */}
         <div className="bg-surface-1 border border-border-1 rounded-xl p-4 sm:p-5 space-y-3">
@@ -395,7 +512,37 @@ export function ImportWizard() {
             </p>
 
             <div className="space-y-2">
-              {outcome.kind === 'pdf' && outcome.empty && (
+              {showPasswordPrompt && (
+                <form
+                  onSubmit={handleUnlockPdf}
+                  className="p-4 rounded-xl border border-status-amber-border bg-status-amber-surface/60 space-y-3"
+                >
+                  <div className="flex items-center gap-2 text-status-amber-text text-sm font-medium">
+                    <AlertTriangle className="w-4 h-4" />
+                    <span>Password-Protected Bank Statement</span>
+                  </div>
+                  <p className="text-xs text-text-muted">
+                    Maybank and Malaysian bank statements are often protected with your IC number or date of birth. Enter password below to decrypt and parse in memory:
+                  </p>
+                  <div className="flex gap-2">
+                    <input
+                      type="password"
+                      value={pdfPassword}
+                      onChange={(e) => setPdfPassword(e.target.value)}
+                      placeholder="e.g. 990101-14-1234 or 990101"
+                      className="flex-1 px-3 py-1.5 text-xs bg-surface-1 border border-border-2 rounded-lg text-text-primary focus:outline-none focus:border-accent"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!pdfPassword.trim()}
+                      className="px-3 py-1.5 text-xs font-medium bg-accent text-accent-fg rounded-lg hover:opacity-90 disabled:opacity-50 transition-opacity"
+                    >
+                      Unlock & Parse
+                    </button>
+                  </div>
+                </form>
+              )}
+              {outcome.kind === 'pdf' && outcome.empty && !showPasswordPrompt && (
                 <Notice Icon={AlertTriangle}>{t('emptyPdfNotice')}</Notice>
               )}
               {outcome.truncated && (
@@ -405,7 +552,7 @@ export function ImportWizard() {
                     : t('truncatedPdfNotice', { max: MAX_PDF_PAGES })}
                 </Notice>
               )}
-              {outcome.rows.length === 0 && !(outcome.kind === 'pdf' && outcome.empty) && (
+              {outcome.rows.length === 0 && !(outcome.kind === 'pdf' && outcome.empty) && !showPasswordPrompt && (
                 <Notice Icon={AlertTriangle}>{t('noRowsNotice')}</Notice>
               )}
             </div>

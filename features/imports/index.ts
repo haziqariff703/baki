@@ -8,7 +8,7 @@
  */
 export { parseCsv, MAX_CSV_ROWS } from './csvParser';
 export type { CsvParseResult, CsvRowError } from './csvParser';
-export { parsePdfText, MAX_PDF_PAGES } from './pdfParser';
+export { parsePdfText, extractTransactionsFromText, MAX_PDF_PAGES } from './pdfParser';
 export type { PdfExtractionError, PdfParseResult } from './pdfParser';
 export { sanitizeMerchantName, sanitizeText, MAX_TEXT_LENGTH } from './sanitize';
 export {

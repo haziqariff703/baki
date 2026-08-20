@@ -104,6 +104,7 @@ export class SupabaseRecurringCandidateRepository
       .from('recurring_candidates')
       .select('*')
       .eq('user_id', userId)
+      .eq('status', 'pending')
       .order('detected_at', { ascending: false });
 
     if (error) throw error;

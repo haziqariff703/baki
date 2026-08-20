@@ -66,6 +66,8 @@ export interface TransactionRepository {
     rows: readonly TransactionInsert[],
   ): Promise<readonly Transaction[]>;
   list(userId: string): Promise<readonly Transaction[]>;
+  delete(userId: string, id: string): Promise<void>;
+  deleteAll(userId: string): Promise<void>;
 }
 
 /** Repository for the import ledger (§5.3). */

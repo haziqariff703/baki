@@ -18,7 +18,7 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
   try {
-    await requireUser();
+    const user = await requireUser();
 
     const body: unknown = await request.json().catch(() => null);
     const { phrase } = deletionConfirmationSchema.parse(body);
@@ -26,7 +26,14 @@ export async function POST(request: Request) {
     const supabase = await createServerSupabase();
     await requestDeletionUseCase(supabase, phrase);
 
-    return NextResponse.json({ recorded: true });
+    // Completely wipe all user records from Supabase tables
+    await supabase.from('transactions').delete().eq('user_id', user.id);
+    await supabase.from('recurring_candidates').delete().eq('user_id', user.id);
+    await supabase.from('imports').delete().eq('user_id', user.id);
+    await supabase.from('subscriptions').delete().eq('user_id', user.id);
+    await supabase.from('user_consents').delete().eq('user_id', user.id);
+
+    return NextResponse.json({ recorded: true, wiped: true });
   } catch (error) {
     return toErrorResponse(error, 'privacy delete');
   }

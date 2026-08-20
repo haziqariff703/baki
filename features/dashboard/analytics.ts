@@ -301,6 +301,8 @@ const MERCHANT_CATEGORY_MAP: Record<string, SubscriptionCategory> = {
   canva: 'software',
   namecheap: 'software',
   github: 'software',
+  claude: 'software',
+  anthropic: 'software',
   celcomdigi: 'telecommunications',
   celcom: 'telecommunications',
   digi: 'telecommunications',

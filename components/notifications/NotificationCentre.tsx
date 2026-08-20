@@ -1,8 +1,17 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { AlarmClock, Bell, BellRing, CalendarClock, Smartphone, PauseCircle } from 'lucide-react';
+import {
+  AlarmClock,
+  Bell,
+  BellRing,
+  CalendarClock,
+  Smartphone,
+  PauseCircle,
+  Check,
+  CheckCheck,
+} from 'lucide-react';
 import {
   computeNext30DayTotalSen,
   countUpcoming,
@@ -44,22 +53,90 @@ const BADGE_CLASS = {
   upcoming: 'text-text-muted border-border-2 bg-surface-2',
 } as const;
 
-/**
- * M4 — Notifications / Reminder Centre (AGENTS.md §1, business rules §4).
- * Reminder timings are independently configurable; v0.1 is in-app only.
- * Badges are icon + text, never color alone (§16).
- */
+const NOTIFICATION_PREF_KEY = 'baki_notification_timings_v1';
+const NOTIFICATION_READ_KEY = 'baki_read_notifications_v1';
+
 export function NotificationCentre({ renewals, fromDate }: NotificationCentreProps) {
   const t = useTranslations('Notifications');
 
-  const [enabled, setEnabled] = useState<Record<TimingKey, boolean>>({
-    '7day': true,
-    '1day': true,
-    dayof: true,
+  const [enabled, setEnabled] = useState<Record<TimingKey, boolean>>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem(NOTIFICATION_PREF_KEY);
+        if (stored) {
+          return JSON.parse(stored);
+        }
+      } catch {
+        // Fallback to default
+      }
+    }
+    return {
+      '7day': true,
+      '1day': true,
+      dayof: true,
+    };
+  });
+
+  const [readIds, setReadIds] = useState<Set<string>>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem(NOTIFICATION_READ_KEY);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) return new Set(parsed);
+        }
+      } catch {
+        // Fallback
+      }
+    }
+    return new Set();
   });
 
   function toggleTiming(key: TimingKey): void {
-    setEnabled((prev) => ({ ...prev, [key]: !prev[key] }));
+    setEnabled((prev) => {
+      const next = { ...prev, [key]: !prev[key] };
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem(NOTIFICATION_PREF_KEY, JSON.stringify(next));
+        } catch {
+          // Ignore
+        }
+      }
+      return next;
+    });
+  }
+
+  function toggleRead(id: string): void {
+    setReadIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem(NOTIFICATION_READ_KEY, JSON.stringify(Array.from(next)));
+        } catch {
+          // Ignore
+        }
+      }
+      return next;
+    });
+  }
+
+  function markAllRead(ids: readonly string[]): void {
+    setReadIds((prev) => {
+      const next = new Set([...prev, ...ids]);
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem(NOTIFICATION_READ_KEY, JSON.stringify(Array.from(next)));
+        } catch {
+          // Ignore
+        }
+      }
+      return next;
+    });
   }
 
   const total = computeNext30DayTotalSen(renewals, fromDate);
@@ -70,6 +147,9 @@ export function NotificationCentre({ renewals, fromDate }: NotificationCentrePro
       return d !== null && d >= 0 && d <= 30;
     }),
   );
+
+  const upcomingIds = upcoming.map((r) => `${r.id}-${r.nextChargeDate}`);
+  const hasUnread = upcomingIds.some((id) => !readIds.has(id));
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
@@ -154,14 +234,27 @@ export function NotificationCentre({ renewals, fromDate }: NotificationCentrePro
       {/* Right Column: Upcoming Reminders Ledger */}
       <div className="lg:col-span-7">
         <section aria-labelledby="upcoming-heading" className="space-y-3">
-          <div className="space-y-1">
-            <h2
-              id="upcoming-heading"
-              className="text-xs font-mono uppercase tracking-wider text-text-faint"
-            >
-              {t('upcomingHeading')}
-            </h2>
-            <p className="text-xs text-text-muted">{t('upcomingSub')}</p>
+          <div className="flex items-center justify-between gap-3">
+            <div className="space-y-1">
+              <h2
+                id="upcoming-heading"
+                className="text-xs font-mono uppercase tracking-wider text-text-faint"
+              >
+                {t('upcomingHeading')}
+              </h2>
+              <p className="text-xs text-text-muted">{t('upcomingSub')}</p>
+            </div>
+
+            {hasUnread && (
+              <button
+                type="button"
+                onClick={() => markAllRead(upcomingIds)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border-2 bg-surface-2 hover:bg-surface-3 text-xs font-medium text-text-secondary hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+              >
+                <CheckCheck className="w-3.5 h-3.5 text-accent" aria-hidden="true" />
+                <span>{t('markAllRead')}</span>
+              </button>
+            )}
           </div>
 
           {/* Summary row — Ledger Rule: label left, single amber tick on the figure */}
@@ -185,6 +278,8 @@ export function NotificationCentre({ renewals, fromDate }: NotificationCentrePro
               <li className="px-5 py-6 text-center text-sm text-text-muted">{t('empty')}</li>
             )}
             {upcoming.map((r) => {
+              const notifId = `${r.id}-${r.nextChargeDate}`;
+              const isRead = readIds.has(notifId);
               const d = daysUntil(r.nextChargeDate, fromDate);
               const badge = reminderBadge(d);
               const Icon = BADGE_ICON[badge.kind];
@@ -197,8 +292,27 @@ export function NotificationCentre({ renewals, fromDate }: NotificationCentrePro
                       ? t('dueTomorrow')
                       : t('dueIn', { days: d });
               return (
-                <li key={r.id} className="px-5 py-3 flex items-center justify-between gap-4">
+                <li
+                  key={notifId}
+                  className={`px-5 py-3.5 flex items-center justify-between gap-4 transition-colors ${
+                    isRead ? 'opacity-65 bg-surface-1/50' : 'bg-surface-1'
+                  }`}
+                >
                   <div className="flex items-center gap-3 min-w-0">
+                    <button
+                      type="button"
+                      onClick={() => toggleRead(notifId)}
+                      title={isRead ? t('markUnread') : t('markRead')}
+                      aria-label={isRead ? t('markUnread') : t('markRead')}
+                      className={`w-6 h-6 rounded-lg border flex items-center justify-center shrink-0 transition-colors ${
+                        isRead
+                          ? 'bg-status-emerald-surface text-status-emerald-text border-status-emerald-border hover:opacity-80'
+                          : 'bg-surface-2 text-text-faint border-border-2 hover:border-accent hover:text-accent'
+                      }`}
+                    >
+                      <Check className="w-3.5 h-3.5" aria-hidden="true" />
+                    </button>
+
                     <BrandLogo merchantName={r.merchantName} size={20} />
                     <span className="font-mono text-xs text-text-faint w-20 shrink-0">
                       {toDatePart(r.nextChargeDate)}
@@ -207,12 +321,20 @@ export function NotificationCentre({ renewals, fromDate }: NotificationCentrePro
                       <p className="text-sm text-text-primary truncate">{r.merchantName}</p>
                       <p className="text-xs text-text-muted">{dueLabel}</p>
                     </div>
-                    <span
-                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-xs font-medium shrink-0 ${BADGE_CLASS[badge.kind]}`}
-                    >
-                      <Icon className="w-3 h-3" aria-hidden="true" />
-                      {t(`badge.${badge.kind}`)}
-                    </span>
+
+                    {!isRead && (
+                      <span
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-xs font-medium shrink-0 ${BADGE_CLASS[badge.kind]}`}
+                      >
+                        <Icon className="w-3 h-3" aria-hidden="true" />
+                        {t(`badge.${badge.kind}`)}
+                      </span>
+                    )}
+                    {isRead && (
+                      <span className="text-[11px] font-mono text-status-emerald-text/80 px-1.5 py-0.5 rounded bg-status-emerald-surface/40 border border-status-emerald-border/40 shrink-0">
+                        {t('acknowledged')}
+                      </span>
+                    )}
                   </div>
                   <span
                     className="font-mono text-sm text-text-primary shrink-0"

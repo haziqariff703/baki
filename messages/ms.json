@@ -269,6 +269,17 @@
         }
       }
     },
+    "starterPack": {
+      "title": "Pakej Permulaan Pelajar Malaysia",
+      "subtitle": "Pilih langganan yang anda bayar untuk mengisi papan pemuka serta-merta dan membuka penjimatan pelajar.",
+      "tag": "Tambah 1-Ketik",
+      "studentRate": "Kadar Pelajar:",
+      "quickAdd": "Tambah Pantas",
+      "added": "Ditambah ke Baki"
+    },
+    "resetSearch": "Tetapkan semula carian",
+    "usageInconsistency": "Ketidakselarasan: Skor tinggi dicatatkan walaupun penggunaan jarang.",
+    "evaluateCta": "Nilai",
     "studentSavings": {
       "title": "Diskaun Pelajar Tersedia",
       "subtitle": "Tukar langganan aktif anda kepada harga pelajar rasmi untuk menjimatkan wang saku.",
@@ -280,6 +291,13 @@
       "applyCta": "Tuntut tawaran pelajar",
       "emptyNotice": "Tiada diskaun pelajar dikesan untuk langganan aktif anda."
     }
+  },
+  "DailyBurn": {
+    "title": "Kadar Hangus Harian",
+    "average30Days": "Purata 30 hari",
+    "perDay": "/ hari",
+    "committedMonthly": "Komitmen merentasi MYR {amount} bil berulang bulanan.",
+    "tehTarikCallout": "Ini bersamaan dengan ~{count} cawan Teh Tarik setiap hari."
   },
   "Imports": {
     "title": "Import penyata & resit",
@@ -347,12 +365,28 @@
     "monthlyBudgetLabel": "Bajet bulanan (MYR)",
     "dailyEquivalentLabel": "Kira-kira MYR {daily} sehari.",
     "errorBudget": "Masukkan jumlah bajet yang sah dalam MYR.",
+    "paydayTitle": "Tarikh Gaji / Wang Saku",
+    "paydayDesc": "Hari dalam bulan gaji atau elaun anda dimasukkan (1hb–31hb).",
+    "paydayLabel": "Hari gaji bulanan",
+    "dayOfMonthSuffix": "hari setiap bulan",
+    "presets": {
+      "standard": "25hb (Gaji Swasta)",
+      "civil": "28hb (Kerajaan / Awam)",
+      "allowance": "1hb (Wang Saku)",
+      "midMonth": "15hb (Pertengahan Bulan)"
+    },
     "preferencesHeading": "Peringatan & Paparan",
     "renewalLeadTimeTitle": "Peringatan pembaharuan bil",
     "renewalLeadTimeDesc": "Bila anda ingin diingatkan sebelum langganan diperbaharui?",
     "reminder7Days": "7 hari sebelum",
     "reminder3Days": "3 hari sebelum",
     "reminder1Day": "1 hari sebelum",
+    "emailReminderTitle": "Pemberitahuan e-mel (Resend)",
+    "emailReminderDesc": "Terima amaran pembaharuan automatik terus ke peti masuk anda.",
+    "testEmailCta": "Hantar e-mel ujian",
+    "testEmailSending": "Menghantar...",
+    "testEmailSent": "Peringatan ujian telah dihantar ke {recipient}",
+    "testEmailFailed": "Gagal menghantar: {error}",
     "defaultViewModeTitle": "Papar harga langganan sebagai",
     "defaultViewModeDesc": "Pilih cara harga dipaparkan di seluruh papan pemuka dan senarai.",
     "viewModeActual": "Bil sebenar",
@@ -443,6 +477,10 @@
     "dueIn": "Perlu dibayar dalam {days} hari",
     "dueToday": "Perlu dibayar hari ini",
     "dueTomorrow": "Perlu dibayar esok",
+    "markRead": "Tanda telah dibaca",
+    "markUnread": "Tanda belum dibaca",
+    "markAllRead": "Tanda semua dibaca",
+    "acknowledged": "Disahkan",
     "timelineHeading": "Garis masa peringatan",
     "timelineSub": "Bila setiap peringatan dihantar berbanding tarikh caj",
     "timelineAria": "Masa peringatan setiap pembaharuan akan datang",
@@ -509,6 +547,10 @@
       }
     },
     "printCta": "Cetak / Simpan PDF",
+    "previewTitle": "Pratonton Penyata Aliran Tunai",
+    "previewSubtitle": "Laporan rasmi audit langganan dan aliran tunai bulanan.",
+    "printConfirmCta": "Cetak / Simpan sebagai PDF",
+    "closePreview": "Tutup pratonton",
     "printHeader": "Penyata Aliran Tunai Bulanan",
     "printGenerated": "Dijana pada {date} · Ringkasan kewangan peribadi sulit"
   },

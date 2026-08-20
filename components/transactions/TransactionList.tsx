@@ -1,8 +1,17 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Inbox, ShieldCheck, Search, X, ArrowUpDown } from 'lucide-react';
+import {
+  Inbox,
+  ShieldCheck,
+  Search,
+  X,
+  ArrowUpDown,
+  Trash2,
+  AlertTriangle,
+  Loader2,
+} from 'lucide-react';
 import { senToMyr, type MoneyInSen } from '@/lib/money';
 import { toDatePart } from '@/lib/dates';
 import { BrandLogo } from '@/components/subscriptions/BrandLogo';
@@ -10,8 +19,8 @@ import { CategoryBreakdown } from '@/components/transactions/CategoryBreakdown';
 import { Pagination } from '@/components/shared/Pagination';
 
 /**
- * Transactions — read-only ledger of imported transaction records with
- * optimized search and pagination (AGENTS.md §10.3, DESIGN.md).
+ * Transactions — interactive ledger of imported transaction records with
+ * search, pagination, and verified deletion (AGENTS.md §2.3, §10.3).
  */
 
 interface TransactionRecord {
@@ -76,12 +85,65 @@ const PAGE_SIZE = 10;
 export function TransactionList({ initialTransactions = SAMPLE_TRANSACTIONS }: TransactionListProps) {
   const t = useTranslations('Transactions');
 
+  const [transactions, setTransactions] = useState<readonly TransactionRecord[]>(initialTransactions);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeQuery, setActiveQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [sortBy, setSortBy] = useState<'date-desc' | 'date-asc' | 'amount-desc' | 'amount-asc' | 'name'>('date-desc');
+  const [showClearModal, setShowClearModal] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const transactions = initialTransactions;
+  // Sync with parent props & fetch live transactions on mount
+  useEffect(() => {
+    setTransactions(initialTransactions);
+
+    fetch('/api/transactions')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && Array.isArray(data.transactions)) {
+          setTransactions(
+            data.transactions.map((t: any) => ({
+              id: t.id,
+              merchantName: t.merchantName,
+              amountSen: t.amountSen,
+              date: t.transactionDate,
+              category: undefined,
+            })),
+          );
+        }
+      })
+      .catch(() => {});
+  }, [initialTransactions]);
+
+  async function handleDeleteSingle(id: string) {
+    setDeletingId(id);
+    try {
+      const res = await fetch(`/api/transactions?id=${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setTransactions((prev) => prev.filter((t) => t.id !== id));
+      }
+    } catch {
+      // ignore
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  async function handleClearAll() {
+    setIsDeleting(true);
+    try {
+      const res = await fetch('/api/transactions?all=true', { method: 'DELETE' });
+      if (res.ok) {
+        setTransactions([]);
+        setShowClearModal(false);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setIsDeleting(false);
+    }
+  }
 
   // Filtered dataset
   const filtered = useMemo(() => {
@@ -158,6 +220,18 @@ export function TransactionList({ initialTransactions = SAMPLE_TRANSACTIONS }: T
               MYR {senToMyr(activeQuery ? filteredTotalSen : netTotalSen)}
             </span>
           </div>
+          {transactions.length > 0 && (
+            <div className="pt-3 pb-1">
+              <button
+                type="button"
+                onClick={() => setShowClearModal(true)}
+                className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl border border-status-rose-border bg-status-rose-surface text-status-rose-text hover:bg-status-rose-surface/80 text-xs font-medium transition-colors"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Clear All Transactions</span>
+              </button>
+            </div>
+          )}
         </section>
 
         {/* Category breakdown */}
@@ -283,7 +357,7 @@ export function TransactionList({ initialTransactions = SAMPLE_TRANSACTIONS }: T
               {paginatedRows.map((txn) => (
                 <li
                   key={txn.id}
-                  className="flex items-center justify-between gap-4 px-5 py-3 hover:bg-surface-2/40 transition-colors"
+                  className="flex items-center justify-between gap-4 px-5 py-3 hover:bg-surface-2/40 transition-colors group"
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <BrandLogo merchantName={txn.merchantName} size={28} />
@@ -303,9 +377,25 @@ export function TransactionList({ initialTransactions = SAMPLE_TRANSACTIONS }: T
                       </div>
                     </div>
                   </div>
-                  <span className="font-mono text-sm font-medium text-text-primary text-right shrink-0">
-                    MYR {senToMyr(txn.amountSen)}
-                  </span>
+
+                  <div className="flex items-center gap-3 shrink-0">
+                    <span className="font-mono text-sm font-medium text-text-primary text-right">
+                      MYR {senToMyr(txn.amountSen)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteSingle(txn.id)}
+                      disabled={deletingId === txn.id}
+                      aria-label={`Delete ${txn.merchantName} transaction`}
+                      className="p-1.5 rounded-lg text-text-faint hover:text-status-rose-text hover:bg-status-rose-surface opacity-0 group-hover:opacity-100 transition-opacity focus:opacity-100"
+                    >
+                      {deletingId === txn.id ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Trash2 className="w-3.5 h-3.5" />
+                      )}
+                    </button>
+                  </div>
                 </li>
               ))}
             </ul>
@@ -320,6 +410,47 @@ export function TransactionList({ initialTransactions = SAMPLE_TRANSACTIONS }: T
           </section>
         )}
       </div>
+
+      {/* Clear All Confirmation Modal */}
+      {showClearModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+          <div className="bg-surface-1 border border-border-2 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-3 text-status-rose-text">
+              <div className="w-10 h-10 rounded-xl bg-status-rose-surface border border-status-rose-border flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-text-primary">Clear All Transactions?</h3>
+                <p className="text-xs text-text-muted">This action is permanent and cannot be undone.</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-text-secondary leading-relaxed">
+              Are you sure you want to delete all <span className="font-mono font-semibold text-text-primary">{transactions.length}</span> transaction records from your account? Active confirmed subscriptions will remain intact.
+            </p>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowClearModal(false)}
+                disabled={isDeleting}
+                className="px-4 py-2 text-xs font-medium rounded-xl border border-border-2 bg-surface-2 text-text-primary hover:bg-surface-3 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleClearAll}
+                disabled={isDeleting}
+                className="inline-flex items-center gap-2 px-4 py-2 text-xs font-medium rounded-xl bg-status-rose-surface border border-status-rose-border text-status-rose-text hover:opacity-90 transition-opacity disabled:opacity-50"
+              >
+                {isDeleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                <span>Delete All Records</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
