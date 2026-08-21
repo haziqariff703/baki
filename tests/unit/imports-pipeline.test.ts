@@ -13,6 +13,7 @@ import {
   MAX_UPLOAD_SIZE_BYTES,
 } from '@/lib/validation';
 import { runImport, IMPORT_PARSER_VERSION } from '@/features/imports';
+import { makeTextPdf } from '../fixtures/makePdf';
 import type {
   ImportInsert,
   ImportRecord,
@@ -192,5 +193,26 @@ describe('runImport orchestration (§12 parse→validate→persist→purge)', ()
     ).rejects.toThrow('FILE_PROCESSING_FAILED');
 
     expect(m.remove).toHaveBeenCalledTimes(1); // best-effort purge on failure
+  });
+
+  it('parses synthetic PDF statement in runImport', async () => {
+    const m = mocks();
+    const pdfBytes = makeTextPdf('Spotify 15.90 2026-08-01');
+
+    const outcome = await runImport({
+      userId: 'user-1',
+      source: 'pdf',
+      fileName: 'statement.pdf',
+      bytes: pdfBytes,
+      storage: { upload: m.upload, remove: m.remove },
+      transactionRepo: m.transactionRepo,
+      importRepo: m.importRepo,
+    });
+
+    expect(outcome.importedCount).toBe(1);
+    expect(outcome.rows[0].merchantName).toBe('Spotify');
+    expect(outcome.rows[0].amountSen).toBe(1590);
+    expect(m.upload).toHaveBeenCalledTimes(1);
+    expect(m.remove).toHaveBeenCalledTimes(1);
   });
 });

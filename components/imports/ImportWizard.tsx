@@ -177,39 +177,122 @@ export function ImportWizard() {
           },
         });
       } else {
-        const buffer = await file.arrayBuffer();
-        const pwd = customPassword || pdfPassword || undefined;
-        const result = await parsePdfText(buffer, pwd);
+        // PDF statements: send directly to the Node.js server route handler for fast, robust parsing
+        const formData = new FormData();
+        formData.append('file', file);
+        const pwd = customPassword || pdfPassword;
+        if (pwd) {
+          formData.append('password', pwd);
+        }
 
-        const isPasswordIssue = result.errors.some((e) =>
-          e.error.toLowerCase().includes('password') || e.error.toLowerCase().includes('ic number'),
-        );
-        if (isPasswordIssue) {
-          setShowPasswordPrompt(true);
-          setStatus({
-            state: 'password_required',
-            fileName,
-            error: customPassword
-              ? 'Incorrect password. Please verify your IC number or statement password.'
-              : undefined,
-          });
+        const res = await fetch('/api/imports', { method: 'POST', body: formData });
+
+        if (res.status === 422) {
+          const errJson = await res.json().catch(() => ({}));
+          if (errJson.error === 'PASSWORD_REQUIRED' || errJson.error === 'INVALID_PASSWORD') {
+            setShowPasswordPrompt(true);
+            setStatus({
+              state: 'password_required',
+              fileName,
+              error:
+                errJson.error === 'INVALID_PASSWORD'
+                  ? errJson.message || 'Incorrect password. Please verify your IC number / statement password.'
+                  : undefined,
+            });
+            return;
+          }
+        }
+
+        if (!res.ok) {
+          const errJson = await res.json().catch(() => ({}));
+          if (res.status === 401) {
+            // Demo fallback: in unauthenticated mode, parse in browser
+            const buffer = await file.arrayBuffer();
+            const result = await parsePdfText(buffer, pwd || undefined);
+            const isPasswordIssue = result.errors.some(
+              (e) =>
+                e.error.toLowerCase().includes('password') ||
+                e.error.toLowerCase().includes('ic number'),
+            );
+            if (isPasswordIssue) {
+              setShowPasswordPrompt(true);
+              setStatus({
+                state: 'password_required',
+                fileName,
+                error: customPassword
+                  ? 'Incorrect password. Please verify your IC number or statement password.'
+                  : undefined,
+              });
+              return;
+            }
+            setShowPasswordPrompt(false);
+            const errors: RowError[] = result.errors.map((e) => ({
+              label: t('errorPageLabel', { page: e.page }),
+              message: e.error,
+            }));
+            setStatus({
+              state: 'done',
+              fileName,
+              outcome: {
+                kind: 'pdf',
+                rows: result.rows,
+                errors,
+                truncated: result.truncated,
+                empty: result.empty,
+              },
+            });
+            return;
+          }
+
+          if (res.status === 403 && errJson.error === 'CONSENT_REQUIRED') {
+            setStatus({
+              state: 'error',
+              message:
+                errJson.message ||
+                'Statement import consent has been withdrawn. Please enable it in Privacy Settings.',
+            });
+            toast.warning('Consent required', {
+              description: 'Enable Statement Import in Privacy Settings to upload statements.',
+            });
+            return;
+          }
+
+          setStatus({ state: 'error', message: errJson.message || t('errorParseFailed') });
           return;
         }
 
+        const data = (await res.json()) as {
+          rows: ImportRowSchema[];
+          errors: { page?: number; error: string }[];
+          truncated: boolean;
+          importedCount: number;
+          candidatesCount?: number;
+        };
+
         setShowPasswordPrompt(false);
-        const errors: RowError[] = result.errors.map((e) => ({
-          label: t('errorPageLabel', { page: e.page }),
+        const errors: RowError[] = (data.errors || []).map((e) => ({
+          label: e.page ? t('errorPageLabel', { page: e.page }) : 'Extraction note',
           message: e.error,
         }));
+
+        setPersistedData({
+          importedCount: data.importedCount,
+          candidatesCount: data.candidatesCount ?? 0,
+        });
+        setPersistMsg(t('persisted', { count: data.importedCount }));
+        toast.success('Statement imported successfully', {
+          description: `Saved ${data.importedCount} transactions. Detected ${data.candidatesCount ?? 0} recurring subscriptions.`,
+        });
+
         setStatus({
           state: 'done',
           fileName,
           outcome: {
             kind: 'pdf',
-            rows: result.rows,
+            rows: data.rows || [],
             errors,
-            truncated: result.truncated,
-            empty: result.empty,
+            truncated: data.truncated || false,
+            empty: (data.rows || []).length === 0,
           },
         });
       }

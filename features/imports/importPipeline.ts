@@ -47,6 +47,7 @@ type ParseResult = {
 async function parseFile(
   source: 'csv' | 'pdf',
   bytes: Uint8Array,
+  password?: string,
 ): Promise<ParseResult> {
   if (source === 'csv') {
     const result = parseCsv(new TextDecoder().decode(bytes));
@@ -56,7 +57,20 @@ async function parseFile(
       truncated: result.truncated,
     };
   }
-  const result = await parsePdfText(bytes);
+  const result = await parsePdfText(bytes, password);
+  const passwordError = result.errors.find(
+    (e) =>
+      e.error.toLowerCase().includes('password') ||
+      e.error.toLowerCase().includes('ic number') ||
+      e.error.toLowerCase().includes('protected'),
+  );
+  if (passwordError) {
+    if (password) {
+      throw new Error('INVALID_PASSWORD');
+    } else {
+      throw new Error('PASSWORD_REQUIRED');
+    }
+  }
   return {
     rows: result.rows,
     errors: result.errors.map((e) => ({ page: e.page, error: e.error })),
@@ -77,6 +91,7 @@ export async function runImport(opts: {
   source: 'csv' | 'pdf';
   fileName: string;
   bytes: Uint8Array;
+  password?: string;
   idempotencyKey?: string;
   storage: { upload(userId: string, ext: 'csv' | 'pdf', data: Uint8Array): Promise<string>; remove(path: string): Promise<void> };
   transactionRepo: TransactionRepository;
@@ -88,6 +103,7 @@ export async function runImport(opts: {
     source,
     fileName,
     bytes,
+    password,
     idempotencyKey,
     storage,
     transactionRepo,
@@ -118,7 +134,7 @@ export async function runImport(opts: {
     console.warn('[runImport] Storage upload warning (continuing with extraction):', storageErr);
   }
 
-  const { rows, errors, truncated } = await parseFile(source, bytes);
+  const { rows, errors, truncated } = await parseFile(source, bytes, password);
 
   // Re-validate every row at the persistence boundary (§7) and cap the count.
   const validated = importRowsArraySchema.parse(rows);
