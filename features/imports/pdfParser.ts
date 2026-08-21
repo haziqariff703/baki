@@ -164,11 +164,17 @@ export async function parsePdfText(
   await ensurePdfWorker();
 
   const isBrowser = typeof window !== 'undefined';
-  const pdfjsLib = isBrowser
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const pdfjsLib: any = isBrowser
     ? await import('pdfjs-dist')
     : await import('pdfjs-dist/legacy/build/pdf.mjs');
 
-  const { getDocument } = pdfjsLib;
+  const { getDocument, GlobalWorkerOptions } = pdfjsLib;
+
+  if (isBrowser && GlobalWorkerOptions && !GlobalWorkerOptions.workerSrc) {
+    GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version || '4.10.38'}/build/pdf.worker.min.mjs`;
+  }
+
   const bytes =
     data instanceof Uint8Array ? data : new Uint8Array(data);
 
