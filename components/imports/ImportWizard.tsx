@@ -313,8 +313,16 @@ export function ImportWizard() {
           },
         });
       }
-    } catch {
-      setStatus({ state: 'error', message: t('errorParseFailed') });
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      console.error('[ImportWizard handleFile error]:', err);
+      setStatus({
+        state: 'error',
+        message:
+          errMsg && errMsg !== 'Failed to fetch' && !errMsg.includes('[object')
+            ? errMsg
+            : t('errorParseFailed'),
+      });
     }
   }
 

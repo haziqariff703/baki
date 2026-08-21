@@ -44,15 +44,22 @@ declare const globalThis: any & { pdfjsWorker?: PdfjsWorkerHandler };
 let workerReady: Promise<void> | null = null;
 
 function ensurePdfWorker(): Promise<void> {
+  if (typeof window !== 'undefined') {
+    return Promise.resolve();
+  }
   if (globalThis.pdfjsWorker?.WorkerMessageHandler) {
     return Promise.resolve();
   }
   if (workerReady) return workerReady;
   workerReady = (async () => {
-    const workerModule = (await import(
-      'pdfjs-dist/legacy/build/pdf.worker.mjs'
-    )) as PdfjsWorkerHandler;
-    globalThis.pdfjsWorker = workerModule;
+    try {
+      const workerModule = (await import(
+        'pdfjs-dist/legacy/build/pdf.worker.mjs'
+      )) as PdfjsWorkerHandler;
+      globalThis.pdfjsWorker = workerModule;
+    } catch {
+      // ignore
+    }
   })();
   return workerReady;
 }
@@ -156,8 +163,12 @@ export async function parsePdfText(
 ): Promise<PdfParseResult> {
   await ensurePdfWorker();
 
-  // Use the Node-compatible legacy build
-  const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const isBrowser = typeof window !== 'undefined';
+  const pdfjsLib = isBrowser
+    ? await import('pdfjs-dist')
+    : await import('pdfjs-dist/legacy/build/pdf.mjs');
+
+  const { getDocument } = pdfjsLib;
   const bytes =
     data instanceof Uint8Array ? data : new Uint8Array(data);
 
