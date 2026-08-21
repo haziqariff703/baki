@@ -56,11 +56,11 @@ async function requirePendingCandidate(
 /** Apply a confirm/reject decision to a pending candidate. */
 export async function PATCH(
   request: Request,
-  ctx: RouteContext<'/api/recurring-candidates/[id]'>,
+  props: { params: Promise<{ id: string }> },
 ) {
   try {
     const user = await requireUser();
-    const { id } = await ctx.params;
+    const { id } = await props.params;
 
     const body: unknown = await request.json().catch(() => null);
     const { action } = candidateDecisionSchema.parse(body);
@@ -90,11 +90,11 @@ export async function PATCH(
 /** Edit merchant/amount of a still-pending candidate. */
 export async function PUT(
   request: Request,
-  ctx: RouteContext<'/api/recurring-candidates/[id]'>,
+  props: { params: Promise<{ id: string }> },
 ) {
   try {
     const user = await requireUser();
-    const { id } = await ctx.params;
+    const { id } = await props.params;
 
     const body: unknown = await request.json().catch(() => null);
     const edit = candidateEditSchema.parse(body);

@@ -21,11 +21,11 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(
   request: Request,
-  ctx: RouteContext<'/api/privacy/consents/[purpose]'>,
+  props: { params: Promise<{ purpose: string }> },
 ) {
   try {
     await requireUser(); // session identity drives auth.uid() inside the RPC
-    const { purpose } = await ctx.params;
+    const { purpose } = await props.params;
 
     // Validate the path purpose (§7 trust boundary).
     const parsedPurpose = consentPurposeSchema.parse(purpose);
