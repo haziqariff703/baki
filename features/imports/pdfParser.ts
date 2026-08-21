@@ -158,6 +158,7 @@ export async function parsePdfText(
       disableFontFace: true,
       verbosity: 0,
       password: password ?? undefined,
+      useSystemFonts: true,
     });
     doc = await loadingTask.promise;
   } catch (err: unknown) {
@@ -200,151 +201,177 @@ export async function parsePdfText(
         continue;
       }
 
-      let textContent;
       try {
-        textContent = await page.getTextContent();
-      } catch {
-        errors.push({ page: pageNum, error: 'Could not extract text from this page' });
-        continue;
-      }
-
-      // 1. Collect text items with spatial coordinates
-      interface PosItem {
-        str: string;
-        x: number;
-        y: number;
-        width: number;
-      }
-
-      const items: PosItem[] = [];
-      let pageRawStream = '';
-
-      for (const item of textContent.items) {
-        if (!('str' in item)) continue;
-        const str = typeof item.str === 'string' ? item.str : '';
-        if (!str.trim()) continue;
-
-        pageRawStream += str + ' ';
-
-        const transform = (item as { transform?: number[] }).transform ?? [0, 0, 0, 0, 0, 0];
-        const x = transform[4] ?? 0;
-        const y = transform[5] ?? 0;
-        const width = (item as { width?: number }).width ?? str.length * 5;
-
-        items.push({ str, x, y, width });
-      }
-
-      if (items.length > 0) extractedAnyText = true;
-
-      // 2. Cluster text items into physical visual lines by vertical Y position (tolerance +/- 4.5px)
-      const yClusters: { y: number; items: PosItem[] }[] = [];
-      for (const item of items) {
-        const cluster = yClusters.find((c) => Math.abs(c.y - item.y) <= 4.5);
-        if (cluster) {
-          cluster.items.push(item);
-        } else {
-          yClusters.push({ y: item.y, items: [item] });
-        }
-      }
-
-      // Sort lines top-to-bottom (Y descending in PDF coordinate space)
-      yClusters.sort((a, b) => b.y - a.y);
-
-      const lines: string[] = [];
-      for (const cluster of yClusters) {
-        // Sort items on the same visual line left-to-right (X ascending)
-        cluster.items.sort((a, b) => a.x - b.x);
-
-        let lineText = '';
-        let lastX = -1;
-        let lastWidth = 0;
-        for (const it of cluster.items) {
-          const str = it.str;
-          if (!str) continue;
-          if (lastX < 0) {
-            lineText = str;
-          } else {
-            const gap = it.x - (lastX + lastWidth);
-            if (gap > 2.0 && !lineText.endsWith(' ') && !str.startsWith(' ')) {
-              lineText += ' ' + str;
-            } else {
-              lineText += str;
-            }
-          }
-          lastX = it.x;
-          lastWidth = it.width;
-        }
-
-        const trimmed = lineText.trim();
-        if (trimmed.length > 0) {
-          lines.push(trimmed);
-        }
-      }
-
-      const pageRows: ImportRowSchema[] = [];
-
-      // Strategy 1: Process visual lines with sliding window
-      let i = 0;
-      while (i < lines.length) {
-        const currentLine = sanitizeText(lines[i]);
-        if (!currentLine || isBankHeaderOrNoise(currentLine)) {
-          i += 1;
+        let textContent;
+        try {
+          textContent = await page.getTextContent({
+            includeMarkedContent: false,
+          });
+        } catch {
+          errors.push({ page: pageNum, error: 'Could not extract text from this page' });
           continue;
         }
 
-        let amountSen = parseFlexibleAmount(currentLine);
-        let transactionDate = parseFlexibleDate(currentLine);
-        let matchedLine = currentLine;
-        let consumed = 1;
+        // 1. Collect text items with spatial coordinates
+        interface PosItem {
+          str: string;
+          x: number;
+          y: number;
+          width: number;
+        }
 
-        // If current line lacks amount or date, attempt merging with adjacent next line
-        if ((amountSen === null || transactionDate === null) && i + 1 < lines.length) {
-          const nextLine = sanitizeText(lines[i + 1]);
-          if (nextLine && !isBankHeaderOrNoise(nextLine)) {
-            const combined = `${currentLine} ${nextLine}`;
-            const combinedAmount = parseFlexibleAmount(combined);
-            const combinedDate = parseFlexibleDate(combined);
+        const items: PosItem[] = [];
+        let pageRawStream = '';
 
-            if (combinedAmount !== null && combinedDate !== null) {
-              amountSen = combinedAmount;
-              transactionDate = combinedDate;
-              matchedLine = combined;
-              consumed = 2;
+        for (const item of textContent.items) {
+          if (!('str' in item)) continue;
+          const str = typeof item.str === 'string' ? item.str : '';
+          if (!str.trim()) continue;
+
+          pageRawStream += str + ' ';
+
+          const transform = (item as { transform?: number[] }).transform ?? [0, 0, 0, 0, 0, 0];
+          const x = transform[4] ?? 0;
+          const y = transform[5] ?? 0;
+          const width = (item as { width?: number }).width ?? str.length * 5;
+
+          items.push({ str, x, y, width });
+        }
+
+        if (items.length > 0) extractedAnyText = true;
+
+        // Sort items top-to-bottom first to enable high-performance O(N) line clustering
+        items.sort((a, b) => b.y - a.y || a.x - b.x);
+
+        // 2. Cluster text items into physical visual lines by vertical Y position (tolerance +/- 4.5px)
+        const yClusters: { y: number; items: PosItem[] }[] = [];
+        for (const item of items) {
+          const lastCluster = yClusters[yClusters.length - 1];
+          if (lastCluster && Math.abs(lastCluster.y - item.y) <= 4.5) {
+            lastCluster.items.push(item);
+          } else {
+            // Small lookback in case of slightly tilted glyph order
+            let matched = false;
+            for (let k = yClusters.length - 2; k >= Math.max(0, yClusters.length - 4); k--) {
+              if (Math.abs(yClusters[k].y - item.y) <= 4.5) {
+                yClusters[k].items.push(item);
+                matched = true;
+                break;
+              }
+            }
+            if (!matched) {
+              yClusters.push({ y: item.y, items: [item] });
             }
           }
         }
 
-        if (amountSen !== null && transactionDate !== null) {
-          const rawMerchant = extractMerchantFromLine(matchedLine);
-          if (rawMerchant && rawMerchant.length >= 2) {
-            const merchantName = canonicalMerchantName(rawMerchant);
-            if (merchantName) {
-              const parsedRow = importRowSchema.safeParse({
-                merchantName,
-                amountSen,
-                transactionDate,
-              });
+        // Sort lines top-to-bottom (Y descending in PDF coordinate space)
+        yClusters.sort((a, b) => b.y - a.y);
 
-              if (parsedRow.success) {
-                pageRows.push(parsedRow.data);
+        const lines: string[] = [];
+        for (const cluster of yClusters) {
+          // Sort items on the same visual line left-to-right (X ascending)
+          cluster.items.sort((a, b) => a.x - b.x);
+
+          let lineText = '';
+          let lastX = -1;
+          let lastWidth = 0;
+          for (const it of cluster.items) {
+            const str = it.str;
+            if (!str) continue;
+            if (lastX < 0) {
+              lineText = str;
+            } else {
+              const gap = it.x - (lastX + lastWidth);
+              if (gap > 2.0 && !lineText.endsWith(' ') && !str.startsWith(' ')) {
+                lineText += ' ' + str;
+              } else {
+                lineText += str;
+              }
+            }
+            lastX = it.x;
+            lastWidth = it.width;
+          }
+
+          const trimmed = lineText.trim();
+          if (trimmed.length > 0) {
+            lines.push(trimmed);
+          }
+        }
+
+        const pageRows: ImportRowSchema[] = [];
+
+        // Strategy 1: Process visual lines with sliding window
+        let i = 0;
+        while (i < lines.length) {
+          const currentLine = sanitizeText(lines[i]);
+          if (!currentLine || isBankHeaderOrNoise(currentLine)) {
+            i += 1;
+            continue;
+          }
+
+          let amountSen = parseFlexibleAmount(currentLine);
+          let transactionDate = parseFlexibleDate(currentLine);
+          let matchedLine = currentLine;
+          let consumed = 1;
+
+          // If current line lacks amount or date, attempt merging with adjacent next line
+          if ((amountSen === null || transactionDate === null) && i + 1 < lines.length) {
+            const nextLine = sanitizeText(lines[i + 1]);
+            if (nextLine && !isBankHeaderOrNoise(nextLine)) {
+              const combined = `${currentLine} ${nextLine}`;
+              const combinedAmount = parseFlexibleAmount(combined);
+              const combinedDate = parseFlexibleDate(combined);
+
+              if (combinedAmount !== null && combinedDate !== null) {
+                amountSen = combinedAmount;
+                transactionDate = combinedDate;
+                matchedLine = combined;
+                consumed = 2;
               }
             }
           }
+
+          if (amountSen !== null && transactionDate !== null) {
+            const rawMerchant = extractMerchantFromLine(matchedLine);
+            if (rawMerchant && rawMerchant.length >= 2) {
+              const merchantName = canonicalMerchantName(rawMerchant);
+              if (merchantName) {
+                const parsedRow = importRowSchema.safeParse({
+                  merchantName,
+                  amountSen,
+                  transactionDate,
+                });
+
+                if (parsedRow.success) {
+                  pageRows.push(parsedRow.data);
+                }
+              }
+            }
+          }
+
+          i += consumed;
         }
 
-        i += consumed;
+        // Strategy 2: Date-anchored continuous stream segmenter fallback / supplement
+        const streamRows = extractTransactionsFromText(pageRawStream);
+
+        // If Strategy 1 found fewer rows than Strategy 2 (or 0), use Strategy 2
+        if (pageRows.length >= streamRows.length && pageRows.length > 0) {
+          rows.push(...pageRows);
+        } else if (streamRows.length > 0) {
+          rows.push(...streamRows);
+        } else {
+          rows.push(...pageRows);
+        }
+      } finally {
+        // Explicitly release page memory to avoid iOS Safari WebKit memory exhaustion
+        page.cleanup();
       }
 
-      // Strategy 2: Date-anchored continuous stream segmenter fallback / supplement
-      const streamRows = extractTransactionsFromText(pageRawStream);
-
-      // If Strategy 1 found fewer rows than Strategy 2 (or 0), use Strategy 2
-      if (pageRows.length >= streamRows.length && pageRows.length > 0) {
-        rows.push(...pageRows);
-      } else if (streamRows.length > 0) {
-        rows.push(...streamRows);
-      } else {
-        rows.push(...pageRows);
+      // Micro-yield to browser event loop so animations and UI don't freeze on mobile
+      if (limit > 1) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
       }
     }
   } finally {

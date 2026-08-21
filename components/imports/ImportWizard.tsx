@@ -21,6 +21,10 @@ import {
   RotateCcw,
   ChevronDown,
   Sparkles,
+  Lock,
+  ShieldCheck,
+  Eye,
+  EyeOff,
   type LucideIcon,
 } from 'lucide-react';
 import {
@@ -54,6 +58,7 @@ type Status =
   | { state: 'idle' }
   | { state: 'validating'; fileName: string }
   | { state: 'parsing'; fileName: string }
+  | { state: 'password_required'; fileName: string; error?: string }
   | { state: 'done'; fileName: string; outcome: ParseOutcome }
   | { state: 'error'; message: string };
 
@@ -83,6 +88,7 @@ export function ImportWizard() {
   } | null>(null);
   const [previewPage, setPreviewPage] = useState(1);
   const [pdfPassword, setPdfPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [showPasswordPrompt, setShowPasswordPrompt] = useState(false);
   const [activeTab, setActiveTab] = useState<'upload' | 'paste'>('upload');
   const [pastedText, setPastedText] = useState('');
@@ -180,8 +186,17 @@ export function ImportWizard() {
         );
         if (isPasswordIssue) {
           setShowPasswordPrompt(true);
+          setStatus({
+            state: 'password_required',
+            fileName,
+            error: customPassword
+              ? 'Incorrect password. Please verify your IC number or statement password.'
+              : undefined,
+          });
+          return;
         }
 
+        setShowPasswordPrompt(false);
         const errors: RowError[] = result.errors.map((e) => ({
           label: t('errorPageLabel', { page: e.page }),
           message: e.error,
@@ -303,6 +318,9 @@ export function ImportWizard() {
     setErrorsOpen(false);
     setPersistedData(null);
     setPersistMsg(null);
+    setShowPasswordPrompt(false);
+    setPdfPassword('');
+    setShowPassword(false);
     fileRef.current = null;
   }
 
@@ -332,173 +350,266 @@ export function ImportWizard() {
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
       {/* Dropzone, Text Paste & Presets - Left Column */}
       <div className="lg:col-span-5 space-y-4">
-        {/* Method Selector Tabs */}
-        <div className="flex p-1 bg-surface-2 border border-border-2 rounded-xl text-xs font-medium">
-          <button
-            type="button"
-            onClick={() => setActiveTab('upload')}
-            className={cn(
-              'flex-1 py-1.5 rounded-lg text-center transition-all',
-              activeTab === 'upload'
-                ? 'bg-surface-1 text-text-primary shadow-xs font-semibold'
-                : 'text-text-muted hover:text-text-primary',
-            )}
-          >
-            Upload Statement (PDF / CSV)
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('paste')}
-            className={cn(
-              'flex-1 py-1.5 rounded-lg text-center transition-all',
-              activeTab === 'paste'
-                ? 'bg-surface-1 text-text-primary shadow-xs font-semibold'
-                : 'text-text-muted hover:text-text-primary',
-            )}
-          >
-            Paste Text Directly
-          </button>
-        </div>
-
-        {activeTab === 'upload' ? (
-          <div
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDragActive(true);
-            }}
-            onDragLeave={() => setDragActive(false)}
-            onDrop={onDrop}
-            className={cn(
-              'bg-surface-1 border border-dashed rounded-xl p-8 md:p-12 flex flex-col items-center justify-center text-center space-y-4 transition-colors',
-              dragActive ? 'border-accent bg-surface-2' : 'border-border-2',
-            )}
-          >
-            <UploadCloud className="w-8 h-8 text-text-faint" aria-hidden="true" />
-            <div className="space-y-1">
-              <p className="text-base font-semibold text-text-primary">{t('dropzoneTitle')}</p>
-              <p className="text-sm text-text-muted">
-                {t('dropzoneHint', { maxSize: MAX_SIZE_MB })}
-              </p>
+        {status.state === 'password_required' ? (
+          <div className="bg-surface-1 border border-border-1 rounded-2xl p-6 sm:p-7 space-y-5 shadow-xs animate-in fade-in duration-200">
+            <div className="flex items-start gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-status-amber-surface border border-status-amber-border flex items-center justify-center shrink-0">
+                <Lock className="w-5 h-5 text-status-amber-text" />
+              </div>
+              <div className="space-y-1 min-w-0">
+                <h2 className="text-base font-semibold text-text-primary">
+                  Password-Protected Statement
+                </h2>
+                <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-surface-2 border border-border-2 text-[11px] font-mono text-text-muted max-w-full truncate">
+                  <FileText className="w-3 h-3 shrink-0" />
+                  <span className="truncate">{status.fileName}</span>
+                </div>
+              </div>
             </div>
 
-            <input
-              ref={inputRef}
-              type="file"
-              accept=".csv,.pdf,.png,.jpg,.jpeg,.webp,text/csv,application/pdf,image/png,image/jpeg,image/webp"
-              onChange={onInputChange}
-              className="sr-only"
-              aria-label={t('browseCta')}
-            />
-            <button
-              type="button"
-              onClick={() => inputRef.current?.click()}
-              disabled={parsing}
-              className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl border border-border-3 bg-surface-3 text-text-primary text-sm font-medium hover:bg-surface-2 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent disabled:opacity-50 min-h-[40px]"
-            >
-              {parsing ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
-                  {t('parsing')}
-                </>
-              ) : (
-                t('browseCta')
-              )}
-            </button>
+            <p className="text-xs text-text-muted leading-relaxed">
+              Malaysian bank statements (Maybank, CIMB, RHB, etc.) are encrypted by default. Enter your <strong>IC Number (NRIC)</strong> or statement password to unlock:
+            </p>
 
-            {status.state === 'error' && (
-              <p role="alert" className="text-xs text-status-rose-text flex items-center gap-1.5">
-                <AlertTriangle className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-                {status.message}
-              </p>
-            )}
+            <form onSubmit={handleUnlockPdf} className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-text-secondary">
+                  Statement Password / NRIC
+                </label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={pdfPassword}
+                    onChange={(e) => setPdfPassword(e.target.value)}
+                    placeholder="e.g. 990101-14-1234 or 990101"
+                    className="w-full px-3.5 py-2.5 pr-10 text-xs bg-surface-2 border border-border-2 rounded-xl text-text-primary focus:outline-none focus:border-accent"
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary p-1"
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                {status.error && (
+                  <p role="alert" className="text-xs text-status-rose-text flex items-center gap-1.5 pt-1 font-medium">
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                    {status.error}
+                  </p>
+                )}
+              </div>
+
+              {/* Notice: We didn't keep your password */}
+              <div className="flex items-start gap-2.5 p-3.5 rounded-xl bg-status-emerald-surface/60 border border-status-emerald-border/70 text-xs text-text-secondary leading-relaxed">
+                <ShieldCheck className="w-4 h-4 text-status-emerald-text shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-semibold text-status-emerald-text">We didn't keep your password</span>
+                  <p className="text-[11px] text-text-muted mt-0.5">
+                    Decryption is executed purely in your browser's local memory. Your password and raw statement are never stored, logged, or sent to any server.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2.5 pt-1">
+                <button
+                  type="submit"
+                  disabled={!pdfPassword.trim() || parsing}
+                  className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-accent text-accent-fg text-xs font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 min-h-[40px]"
+                >
+                  {parsing ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Decrypting & Parsing...</span>
+                    </>
+                  ) : (
+                    <span>Decrypt & Parse Statement</span>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={reset}
+                  disabled={parsing}
+                  className="px-3.5 py-2.5 rounded-xl border border-border-2 bg-surface-2 text-text-muted hover:text-text-primary text-xs font-medium transition-colors min-h-[40px]"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
           </div>
         ) : (
-          <div className="bg-surface-1 border border-border-2 rounded-xl p-5 space-y-3">
-            <div className="space-y-1">
-              <p className="text-sm font-semibold text-text-primary">Paste Bank Statement Lines</p>
-              <p className="text-xs text-text-muted">
-                Copy and paste transaction text from Maybank2u, MAE, CIMB Clicks, or bank email receipts below:
-              </p>
-            </div>
-            <textarea
-              rows={6}
-              value={pastedText}
-              onChange={(e) => setPastedText(e.target.value)}
-              placeholder="e.g.&#10;01/08/2026 CELCOM MOBILE SDN BHD 60.00-&#10;02/08/2026 SPOTIFY MALAYSIA 15.90-&#10;04/08/2026 NETFLIX COM 55.00-&#10;05/08/2026 WARUNG MAK TIMAH 12.00-"
-              className="w-full p-3 text-xs font-mono bg-surface-2 border border-border-2 rounded-xl text-text-primary focus:outline-none focus:border-accent resize-y"
-            />
-            <div className="flex justify-end">
+          <>
+            {/* Method Selector Tabs */}
+            <div className="flex p-1 bg-surface-2 border border-border-2 rounded-xl text-xs font-medium">
               <button
                 type="button"
-                onClick={handleParsePastedText}
-                disabled={!pastedText.trim() || parsing}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-accent text-accent-fg text-xs font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
+                onClick={() => setActiveTab('upload')}
+                className={cn(
+                  'flex-1 py-1.5 rounded-lg text-center transition-all',
+                  activeTab === 'upload'
+                    ? 'bg-surface-1 text-text-primary shadow-xs font-semibold'
+                    : 'text-text-muted hover:text-text-primary',
+                )}
               >
-                {parsing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
-                Parse Transactions
+                Upload Statement (PDF / CSV)
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('paste')}
+                className={cn(
+                  'flex-1 py-1.5 rounded-lg text-center transition-all',
+                  activeTab === 'paste'
+                    ? 'bg-surface-1 text-text-primary shadow-xs font-semibold'
+                    : 'text-text-muted hover:text-text-primary',
+                )}
+              >
+                Paste Text Directly
               </button>
             </div>
-          </div>
-        )}
 
-        {/* 1-Click Sample Malaysian Presets */}
-        <div className="bg-surface-1 border border-border-1 rounded-xl p-4 sm:p-5 space-y-3">
-          <div className="flex items-center gap-2">
-            <h2 className="text-xs font-mono uppercase tracking-wider text-text-faint">
-              {t('demoPresetHeading')}
-            </h2>
-          </div>
+            {activeTab === 'upload' ? (
+              <div
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDragActive(true);
+                }}
+                onDragLeave={() => setDragActive(false)}
+                onDrop={onDrop}
+                className={cn(
+                  'bg-surface-1 border border-dashed rounded-xl p-8 md:p-12 flex flex-col items-center justify-center text-center space-y-4 transition-colors',
+                  dragActive ? 'border-accent bg-surface-2' : 'border-border-2',
+                )}
+              >
+                <UploadCloud className="w-8 h-8 text-text-faint" aria-hidden="true" />
+                <div className="space-y-1">
+                  <p className="text-base font-semibold text-text-primary">{t('dropzoneTitle')}</p>
+                  <p className="text-sm text-text-muted">
+                    {t('dropzoneHint', { maxSize: MAX_SIZE_MB })}
+                  </p>
+                </div>
 
-          <div className="space-y-2">
-            <button
-              type="button"
-              onClick={() => loadSamplePreset('student')}
-              className="w-full text-left p-3 rounded-xl border border-border-2 bg-surface-2/40 hover:bg-surface-2 hover:border-border-3 transition-colors space-y-1"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-text-primary">
-                  {t('demoPresetStudent')}
-                </span>
-                <span className="text-xs text-accent font-medium">{t('demoLoadCta')}</span>
-              </div>
-              <p className="text-[11px] text-text-muted">{t('demoPresetStudentDesc')}</p>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => loadSamplePreset('worker')}
-              className="w-full text-left p-3 rounded-xl border border-border-2 bg-surface-2/40 hover:bg-surface-2 hover:border-border-3 transition-colors space-y-1"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-text-primary">
-                  {t('demoPresetWorker')}
-                </span>
-                <span className="text-xs text-accent font-medium">{t('demoLoadCta')}</span>
-              </div>
-              <p className="text-[11px] text-text-muted">{t('demoPresetWorkerDesc')}</p>
-            </button>
-
-            <div className="pt-2 border-t border-border-1 flex items-center justify-between text-[11px] text-text-faint px-1">
-              <span>Download sample CSV:</span>
-              <div className="flex items-center gap-3">
-                <a
-                  href="/samples/malaysian_student_statement.csv"
-                  download="malaysian_student_statement.csv"
-                  className="text-text-muted hover:text-accent font-mono underline"
+                <input
+                  ref={inputRef}
+                  type="file"
+                  accept=".csv,.pdf,.png,.jpg,.jpeg,.webp,text/csv,application/pdf,image/png,image/jpeg,image/webp"
+                  onChange={onInputChange}
+                  className="sr-only"
+                  aria-label={t('browseCta')}
+                />
+                <button
+                  type="button"
+                  onClick={() => inputRef.current?.click()}
+                  disabled={parsing}
+                  className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl border border-border-3 bg-surface-3 text-text-primary text-sm font-medium hover:bg-surface-2 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent disabled:opacity-50 min-h-[40px]"
                 >
-                  Student CSV
-                </a>
-                <a
-                  href="/samples/young_worker_statement.csv"
-                  download="young_worker_statement.csv"
-                  className="text-text-muted hover:text-accent font-mono underline"
+                  {parsing ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+                      {t('parsing')}
+                    </>
+                  ) : (
+                    t('browseCta')
+                  )}
+                </button>
+
+                {status.state === 'error' && (
+                  <p role="alert" className="text-xs text-status-rose-text flex items-center gap-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                    {status.message}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="bg-surface-1 border border-border-2 rounded-xl p-5 space-y-3">
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold text-text-primary">Paste Bank Statement Lines</p>
+                  <p className="text-xs text-text-muted">
+                    Copy and paste transaction text from Maybank2u, MAE, CIMB Clicks, or bank email receipts below:
+                  </p>
+                </div>
+                <textarea
+                  rows={6}
+                  value={pastedText}
+                  onChange={(e) => setPastedText(e.target.value)}
+                  placeholder="e.g.&#10;01/08/2026 CELCOM MOBILE SDN BHD 60.00-&#10;02/08/2026 SPOTIFY MALAYSIA 15.90-&#10;04/08/2026 NETFLIX COM 55.00-&#10;05/08/2026 WARUNG MAK TIMAH 12.00-"
+                  className="w-full p-3 text-xs font-mono bg-surface-2 border border-border-2 rounded-xl text-text-primary focus:outline-none focus:border-accent resize-y"
+                />
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={handleParsePastedText}
+                    disabled={!pastedText.trim() || parsing}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-accent text-accent-fg text-xs font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
+                  >
+                    {parsing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                    Parse Transactions
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* 1-Click Sample Malaysian Presets */}
+            <div className="bg-surface-1 border border-border-1 rounded-xl p-4 sm:p-5 space-y-3">
+              <div className="flex items-center gap-2">
+                <h2 className="text-xs font-mono uppercase tracking-wider text-text-faint">
+                  {t('demoPresetHeading')}
+                </h2>
+              </div>
+
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={() => loadSamplePreset('student')}
+                  className="w-full text-left p-3 rounded-xl border border-border-2 bg-surface-2/40 hover:bg-surface-2 hover:border-border-3 transition-colors space-y-1"
                 >
-                  Worker CSV
-                </a>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-text-primary">
+                      {t('demoPresetStudent')}
+                    </span>
+                    <span className="text-xs text-accent font-medium">{t('demoLoadCta')}</span>
+                  </div>
+                  <p className="text-[11px] text-text-muted">{t('demoPresetStudentDesc')}</p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => loadSamplePreset('worker')}
+                  className="w-full text-left p-3 rounded-xl border border-border-2 bg-surface-2/40 hover:bg-surface-2 hover:border-border-3 transition-colors space-y-1"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-text-primary">
+                      {t('demoPresetWorker')}
+                    </span>
+                    <span className="text-xs text-accent font-medium">{t('demoLoadCta')}</span>
+                  </div>
+                  <p className="text-[11px] text-text-muted">{t('demoPresetWorkerDesc')}</p>
+                </button>
+
+                <div className="pt-2 border-t border-border-1 flex items-center justify-between text-[11px] text-text-faint px-1">
+                  <span>Download sample CSV:</span>
+                  <div className="flex items-center gap-3">
+                    <a
+                      href="/samples/malaysian_student_statement.csv"
+                      download="malaysian_student_statement.csv"
+                      className="text-text-muted hover:text-accent font-mono underline"
+                    >
+                      Student CSV
+                    </a>
+                    <a
+                      href="/samples/young_worker_statement.csv"
+                      download="young_worker_statement.csv"
+                      className="text-text-muted hover:text-accent font-mono underline"
+                    >
+                      Worker CSV
+                    </a>
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
-        </div>
+          </>
+        )}
       </div>
 
       {/* Results / Guidelines - Right Column */}
@@ -531,37 +642,7 @@ export function ImportWizard() {
             </p>
 
             <div className="space-y-2">
-              {showPasswordPrompt && (
-                <form
-                  onSubmit={handleUnlockPdf}
-                  className="p-4 rounded-xl border border-status-amber-border bg-status-amber-surface/60 space-y-3"
-                >
-                  <div className="flex items-center gap-2 text-status-amber-text text-sm font-medium">
-                    <AlertTriangle className="w-4 h-4" />
-                    <span>Password-Protected Bank Statement</span>
-                  </div>
-                  <p className="text-xs text-text-muted">
-                    Maybank and Malaysian bank statements are often protected with your IC number or date of birth. Enter password below to decrypt and parse in memory:
-                  </p>
-                  <div className="flex gap-2">
-                    <input
-                      type="password"
-                      value={pdfPassword}
-                      onChange={(e) => setPdfPassword(e.target.value)}
-                      placeholder="e.g. 990101-14-1234 or 990101"
-                      className="flex-1 px-3 py-1.5 text-xs bg-surface-1 border border-border-2 rounded-lg text-text-primary focus:outline-none focus:border-accent"
-                    />
-                    <button
-                      type="submit"
-                      disabled={!pdfPassword.trim()}
-                      className="px-3 py-1.5 text-xs font-medium bg-accent text-accent-fg rounded-lg hover:opacity-90 disabled:opacity-50 transition-opacity"
-                    >
-                      Unlock & Parse
-                    </button>
-                  </div>
-                </form>
-              )}
-              {outcome.kind === 'pdf' && outcome.empty && !showPasswordPrompt && (
+              {outcome.kind === 'pdf' && outcome.empty && (
                 <Notice Icon={AlertTriangle}>{t('emptyPdfNotice')}</Notice>
               )}
               {outcome.truncated && (
@@ -571,7 +652,7 @@ export function ImportWizard() {
                     : t('truncatedPdfNotice', { max: MAX_PDF_PAGES })}
                 </Notice>
               )}
-              {outcome.rows.length === 0 && !(outcome.kind === 'pdf' && outcome.empty) && !showPasswordPrompt && (
+              {outcome.rows.length === 0 && !(outcome.kind === 'pdf' && outcome.empty) && (
                 <Notice Icon={AlertTriangle}>{t('noRowsNotice')}</Notice>
               )}
             </div>
