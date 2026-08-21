@@ -43,6 +43,8 @@ const syne = Syne({
 });
 
 import {Toaster} from '@/components/ui/Toaster';
+import {Analytics} from '@vercel/analytics/next';
+import {SpeedInsights} from '@vercel/speed-insights/next';
 
 export default async function LocaleLayout({
   children,
@@ -64,6 +66,8 @@ export default async function LocaleLayout({
         <NextIntlClientProvider messages={messages}>
           {children}
           <Toaster />
+          <Analytics />
+          <SpeedInsights />
         </NextIntlClientProvider>
       </body>
     </html>
