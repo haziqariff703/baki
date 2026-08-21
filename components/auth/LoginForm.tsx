@@ -62,7 +62,13 @@ export function LoginForm() {
 
     const { error, data } = action === 'signin' 
       ? await supabase.auth.signInWithPassword({ email, password })
-      : await supabase.auth.signUp({ email, password });
+      : await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            emailRedirectTo: `${window.location.origin}/api/auth/callback?next=/dashboard`,
+          },
+        });
 
     setIsLoading(false);
 

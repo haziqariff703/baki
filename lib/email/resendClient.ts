@@ -54,14 +54,26 @@ export async function sendEmailNotification(
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      const errorMsg = errorData.message || `Resend API returned status ${response.status}`;
-      console.error('[Email Transport: Error]', errorMsg);
+      const rawMsg = errorData.message || `Resend API returned status ${response.status}`;
+      console.error('[Email Transport: Error]', rawMsg);
+
+      // Privacy by Design (AGENTS.md §2.3 / §14.1):
+      // Never expose upstream vendor error text that contains developer account email addresses.
+      let userSafeError = 'Unable to deliver email reminder. Please check email settings.';
+      if (
+        rawMsg.includes('testing emails') ||
+        rawMsg.includes('verify your domain') ||
+        rawMsg.includes('validation_error') ||
+        rawMsg.includes('domain')
+      ) {
+        userSafeError = 'Email delivery to external recipients requires a verified custom domain in Resend.';
+      }
+
       return {
         success: false,
-        error: errorMsg,
+        error: userSafeError,
       };
     }
-
 
     const data = await response.json();
     return {
@@ -74,7 +86,7 @@ export async function sendEmailNotification(
     console.error('[Email Transport: Exception]', errorMsg);
     return {
       success: false,
-      error: errorMsg,
+      error: 'Network error during email delivery.',
     };
   }
 }

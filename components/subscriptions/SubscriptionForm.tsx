@@ -22,6 +22,7 @@ import {
   Eye,
   PauseCircle,
   XCircle,
+  Loader2,
   type LucideIcon,
 } from 'lucide-react';
 import { computeScoreResult, type CriterionId, type Recommendation } from '@/features/scoring';
@@ -185,6 +186,7 @@ function FormPanel({
   const [satisfaction, setSatisfaction] = useState(editing?.satisfaction ?? 3);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Live brand suggestions as the user types the merchant name.
   const suggestions = useMemo<readonly BrandSuggestion[]>(
@@ -244,8 +246,13 @@ function FormPanel({
     const parsed = subscriptionSchema.safeParse(candidate);
     if (!parsed.success) return;
 
-    onSave(parsed.data);
-    onClose();
+    setIsSubmitting(true);
+    try {
+      onSave(parsed.data);
+      onClose();
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   const setters: Record<CriterionId, (v: number) => void> = {
@@ -520,9 +527,11 @@ function FormPanel({
         <button
           type="submit"
           form="subscription-form"
-          className="px-4 py-2 rounded-xl border border-border-3 bg-surface-3 text-text-primary text-sm font-medium hover:bg-surface-2 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+          disabled={isSubmitting}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-border-3 bg-surface-3 text-text-primary text-sm font-medium hover:bg-surface-2 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent disabled:opacity-50 cursor-pointer"
         >
-          {t('formSave')}
+          {isSubmitting && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
+          <span>{t('formSave')}</span>
         </button>
       </div>
     </div>
