@@ -5,6 +5,8 @@ import LanguageSwitcher from '@/components/shared/LanguageSwitcher';
 import { AccountProfileSettings } from '@/components/settings/AccountProfileSettings';
 import { Link } from '@/i18n/routing';
 import { createClient } from '@/lib/supabase/server';
+import { SupabaseProfileRepository } from '@/features/settings/repository';
+import type { UserProfile } from '@/lib/validation/profile';
 
 /**
  * Settings & Account Configuration Page.
@@ -21,6 +23,7 @@ export default async function SettingsPage() {
     displayName?: string | null;
     avatarUrl?: string | null;
   } | undefined = undefined;
+  let initialProfile: UserProfile | null = null;
 
   try {
     const supabase = await createClient();
@@ -29,17 +32,26 @@ export default async function SettingsPage() {
     } = await supabase.auth.getUser();
 
     if (user) {
+      const resolvedDisplayName =
+        user.user_metadata?.full_name ||
+        user.user_metadata?.name ||
+        user.user_metadata?.preferred_username ||
+        (user.email ? user.email.split('@')[0] : 'User');
+
       initialUser = {
         email: user.email,
-        displayName:
-          user.user_metadata?.full_name ||
-          user.user_metadata?.name ||
-          user.email?.split('@')[0],
+        displayName: resolvedDisplayName,
         avatarUrl:
           user.user_metadata?.avatar_url ||
           user.user_metadata?.picture ||
           null,
       };
+
+      const repo = new SupabaseProfileRepository(supabase);
+      initialProfile = await repo.getProfile(user.id, {
+        email: user.email || undefined,
+        displayName: resolvedDisplayName,
+      });
     }
   } catch (err) {
     // Guest or offline session fallback
@@ -58,8 +70,9 @@ export default async function SettingsPage() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* Main Column: Interactive Profile & Preferences (8 cols) */}
           <div className="lg:col-span-8 space-y-6">
-            <AccountProfileSettings initialUser={initialUser} />
+            <AccountProfileSettings initialUser={initialUser} initialProfile={initialProfile} />
           </div>
+
 
           {/* Side Column: Language & Privacy Governance (4 cols) */}
           <div className="lg:col-span-4 space-y-6">

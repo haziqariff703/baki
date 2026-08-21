@@ -21,36 +21,21 @@ import type { UserProfile } from '@/lib/validation/profile';
 
 interface StudentSavingsCardProps {
   readonly summary: StudentSavingsSummary;
+  readonly isStudent?: boolean;
+  readonly universityDomain?: string | null;
+  readonly email?: string | null;
 }
 
-export function StudentSavingsCard({ summary }: StudentSavingsCardProps) {
+export function StudentSavingsCard({
+  summary,
+  isStudent = true,
+  universityDomain,
+  email,
+}: StudentSavingsCardProps) {
   const t = useTranslations('Subscriptions.studentSavings');
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [isHydrated, setIsHydrated] = useState(false);
 
-  useEffect(() => {
-    const loadProfile = () => {
-      try {
-        const stored = localStorage.getItem('baki_user_profile_v1');
-        if (stored) {
-          setProfile(JSON.parse(stored));
-        }
-      } catch {}
-      setIsHydrated(true);
-    };
-
-    loadProfile();
-
-    window.addEventListener('baki_profile_updated', loadProfile);
-    window.addEventListener('storage', loadProfile);
-    return () => {
-      window.removeEventListener('baki_profile_updated', loadProfile);
-      window.removeEventListener('storage', loadProfile);
-    };
-  }, []);
-
-  // Do not show student discount opportunities for general or young professional users
-  if (isHydrated && profile && (!profile.isStudent || profile.educationTier === 'general' || profile.educationTier === 'young_professional')) {
+  // Do not show student discount opportunities for non-student users
+  if (!isStudent) {
     return null;
   }
 
@@ -59,11 +44,8 @@ export function StudentSavingsCard({ summary }: StudentSavingsCardProps) {
     return null;
   }
 
-  const universityInfo = profile?.email
-    ? resolveUniversityDomain(profile.email)
-    : profile?.universityDomain
-    ? resolveUniversityDomain(profile.universityDomain)
-    : null;
+  const universityInfo = resolveUniversityDomain(universityDomain || email || '');
+
 
   return (
     <div className="rounded-xl border border-status-emerald-border bg-status-emerald-surface/30 p-4 sm:p-5 space-y-4">

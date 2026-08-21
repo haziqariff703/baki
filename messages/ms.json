@@ -637,6 +637,12 @@
       "consent_withdrawn": "Persetujuan ditarik balik",
       "data_exported": "Data dieksport",
       "account_deletion_requested": "Penghapusan akaun diminta"
+    },
+    "pagination": {
+      "pageOf": "Halaman {current} daripada {total}",
+      "showingEvents": "Menunjukkan {start}–{end} daripada {total} rekod",
+      "prev": "Sebelumnya",
+      "next": "Seterusnya"
     }
   },
   "Landing": {

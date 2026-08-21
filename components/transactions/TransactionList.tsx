@@ -17,6 +17,7 @@ import { toDatePart } from '@/lib/dates';
 import { BrandLogo } from '@/components/subscriptions/BrandLogo';
 import { CategoryBreakdown } from '@/components/transactions/CategoryBreakdown';
 import { Pagination } from '@/components/shared/Pagination';
+import { toast } from '@/lib/toast';
 
 /**
  * Transactions — interactive ledger of imported transaction records with
@@ -117,14 +118,20 @@ export function TransactionList({ initialTransactions = SAMPLE_TRANSACTIONS }: T
   }, [initialTransactions]);
 
   async function handleDeleteSingle(id: string) {
+    const txn = transactions.find((t) => t.id === id);
     setDeletingId(id);
     try {
       const res = await fetch(`/api/transactions?id=${id}`, { method: 'DELETE' });
       if (res.ok) {
         setTransactions((prev) => prev.filter((t) => t.id !== id));
+        toast.info('Transaction deleted', {
+          description: `${txn?.merchantName || 'Record'} removed.`,
+        });
+      } else {
+        toast.error('Failed to delete transaction');
       }
     } catch {
-      // ignore
+      toast.error('Network error during deletion');
     } finally {
       setDeletingId(null);
     }
@@ -137,9 +144,14 @@ export function TransactionList({ initialTransactions = SAMPLE_TRANSACTIONS }: T
       if (res.ok) {
         setTransactions([]);
         setShowClearModal(false);
+        toast.warning('Transaction history cleared', {
+          description: 'All stored transaction rows were removed.',
+        });
+      } else {
+        toast.error('Failed to clear transactions');
       }
     } catch {
-      // ignore
+      toast.error('Network error while clearing transactions');
     } finally {
       setIsDeleting(false);
     }

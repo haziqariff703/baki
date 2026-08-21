@@ -25,6 +25,8 @@ const syne = Syne({
   display: 'swap',
 });
 
+import {Toaster} from '@/components/ui/Toaster';
+
 export default async function LocaleLayout({
   children,
   params,
@@ -44,6 +46,7 @@ export default async function LocaleLayout({
       <body className="bg-surface-0 text-text-primary font-sans antialiased min-h-screen flex flex-col">
         <NextIntlClientProvider messages={messages}>
           {children}
+          <Toaster />
         </NextIntlClientProvider>
       </body>
     </html>

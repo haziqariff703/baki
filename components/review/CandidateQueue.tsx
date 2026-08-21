@@ -37,6 +37,7 @@ import { candidateEditSchema } from '@/lib/validation';
 import { BrandLogo } from '@/components/subscriptions/BrandLogo';
 import { ConfidencePanel } from './ConfidencePanel';
 import { AiTransparencyModal } from './AiTransparencyModal';
+import { toast as globalToast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 
 interface QueueProps {
@@ -147,6 +148,17 @@ export function CandidateQueue({ initialCandidates }: QueueProps) {
     setEditing((e) => (e?.id === id ? null : e));
     if (candidate) {
       setToast({ id, merchantName: candidate.merchantName, action });
+      if (action === 'confirm') {
+        globalToast.success(t('toastConfirmed', { merchant: candidate.merchantName }), {
+          description: 'Added to active subscriptions list.',
+          action: { label: 'Undo (Z)', onClick: () => undo() },
+        });
+      } else {
+        globalToast.info(t('toastRejected', { merchant: candidate.merchantName }), {
+          description: 'Dismissed from recurring review queue.',
+          action: { label: 'Undo (Z)', onClick: () => undo() },
+        });
+      }
     }
 
     try {
@@ -158,6 +170,7 @@ export function CandidateQueue({ initialCandidates }: QueueProps) {
     } catch {
       // Soft rollback on network failure
       setCandidates(prevCandidates);
+      globalToast.error('Network error', { description: 'Failed to update candidate state.' });
     }
   }
 
@@ -168,6 +181,7 @@ export function CandidateQueue({ initialCandidates }: QueueProps) {
         c.id === toast.id ? { ...c, status: { state: 'pending' } } : c,
       ),
     );
+    globalToast.info('Action undone', { description: `${toast.merchantName} restored to queue.` });
     setToast(null);
   }
 
@@ -182,6 +196,9 @@ export function CandidateQueue({ initialCandidates }: QueueProps) {
     setCandidates((prev) =>
       prev.map((c) => (c.id === editing.id ? applyEdit(c, parsed.data) : c)),
     );
+    globalToast.success('Candidate details updated', {
+      description: `${editing.merchantName} changes saved.`,
+    });
     setEditing(null);
   }
 

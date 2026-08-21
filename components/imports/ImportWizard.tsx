@@ -37,6 +37,7 @@ import { senToMyr } from '@/lib/money';
 import { toDatePart } from '@/lib/dates';
 import { BrandLogo } from '@/components/subscriptions/BrandLogo';
 import { Pagination } from '@/components/shared/Pagination';
+import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 import { Link } from '@/i18n/routing';
 
@@ -244,9 +245,23 @@ export function ImportWizard() {
             candidatesCount: 4,
           });
           setPersistMsg(t('persisted', { count: outcome?.rows.length ?? 4 }));
+          toast.success('Import completed (Demo Mode)', {
+            description: `Saved ${outcome?.rows.length ?? 4} transactions.`,
+          });
           return;
         }
-        setPersistMsg(errJson.error ?? t('persistFailed'));
+
+        if (res.status === 403 && errJson.error === 'CONSENT_REQUIRED') {
+          toast.warning('Consent required', {
+            description: 'Statement Import is disabled. Enable it in Privacy Settings to upload statements.',
+          });
+          setPersistMsg(errJson.message || 'Statement import consent has been withdrawn.');
+          return;
+        }
+
+        const msg = errJson.message || errJson.error || t('persistFailed');
+        setPersistMsg(msg);
+        toast.error('Import failed', { description: msg });
         return;
       }
       const data = (await res.json()) as {
@@ -259,8 +274,12 @@ export function ImportWizard() {
         candidatesCount: data.candidatesCount ?? 0,
       });
       setPersistMsg(t('persisted', { count: data.importedCount }));
+      toast.success('Statement imported successfully', {
+        description: `Saved ${data.importedCount} transactions. Detected ${data.candidatesCount ?? 0} recurring subscriptions.`,
+      });
     } catch {
       setPersistMsg(t('persistFailed'));
+      toast.error('Network error', { description: 'Failed to upload statement to server.' });
     } finally {
       setPersisting(false);
     }

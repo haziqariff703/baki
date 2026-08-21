@@ -65,12 +65,16 @@ export default async function DashboardPage() {
   let initialSubscriptions = syntheticSubscriptions;
   let candidates = syntheticCandidates;
   let availableBalanceSen = syntheticAvailableBalanceSen;
+  let isStudent = false;
+  let userEmail: string | undefined = undefined;
+  let userProfile: any = null;
 
   try {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
     if (user) {
+      userEmail = user.email;
       const subRepo = new SupabaseSubscriptionRepository(supabase);
       const userSubs = await subRepo.list(user.id);
       if (userSubs) {
@@ -85,12 +89,18 @@ export default async function DashboardPage() {
 
       const { data: profile } = await supabase
         .from('profiles')
-        .select('monthly_allowance_sen')
+        .select('*')
         .eq('id', user.id)
         .maybeSingle();
 
-      if (profile?.monthly_allowance_sen != null) {
-        availableBalanceSen = profile.monthly_allowance_sen;
+      if (profile) {
+        userProfile = profile;
+        if (profile.monthly_allowance_sen != null) {
+          availableBalanceSen = profile.monthly_allowance_sen;
+        }
+        isStudent = profile.education_tier
+          ? profile.education_tier === 'tertiary_student'
+          : Boolean(profile.is_student);
       }
     }
   } catch (error) {
@@ -122,12 +132,13 @@ export default async function DashboardPage() {
   const forecast = renewalForecast(realRenewals, SYNTHETIC_TODAY);
   const savings = savingsOpportunities(scored);
   const trend = spendingTrend(summary.monthlyCommitmentSen);
-  const studentSavings = detectStudentSavings(initialSubscriptions, true);
+  const studentSavings = detectStudentSavings(initialSubscriptions, isStudent);
   const alerts = buildAlerts(
     realRenewals,
     SYNTHETIC_TODAY,
     summary.safeToSpendSen,
   );
+
 
   // Review queue: pending candidates + advisory confidence summary.
   const pending = (candidates ?? []).filter((c: any) => {
@@ -233,7 +244,13 @@ export default async function DashboardPage() {
           </section>
 
           {/* Student Discount Opportunities (if any active sub qualifies) */}
-          <StudentSavingsCard summary={studentSavings} />
+          <StudentSavingsCard
+            summary={studentSavings}
+            isStudent={isStudent}
+            universityDomain={userProfile?.university_domain}
+            email={userEmail}
+          />
+
 
           {/* Daily Burn Rate & Teh Tarik Lifestyle Baseline */}
           <DailyBurnWidget monthlyTotalSen={summary.monthlyCommitmentSen} />

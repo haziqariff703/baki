@@ -43,6 +43,7 @@ import { StudentStarterCatalog } from '@/components/subscriptions/StudentStarter
 import { BrandLogo } from '@/components/subscriptions/BrandLogo';
 import { Pagination } from '@/components/shared/Pagination';
 import { detectStudentSavings, type StudentPreset } from '@/features/student-optimizer';
+import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 import { X } from 'lucide-react';
 
@@ -151,9 +152,11 @@ export function SubscriptionManager({ initialSubscriptions }: SubscriptionManage
   }, [initialSubscriptions]);
 
   function togglePause(id: string) {
+    const sub = subscriptions.find((s) => s.id === id);
     setPausedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) {
+      const isNowPaused = !prev.has(id);
+      if (prev.has(id)) {
         next.delete(id);
       } else {
         next.add(id);
@@ -167,6 +170,17 @@ export function SubscriptionManager({ initialSubscriptions }: SubscriptionManage
       } catch {
         // Fallback
       }
+
+      if (isNowPaused) {
+        toast.info('Subscription paused', {
+          description: `${sub?.merchantName || 'Subscription'} excluded from cash-flow forecast.`,
+        });
+      } else {
+        toast.success('Subscription resumed', {
+          description: `${sub?.merchantName || 'Subscription'} restored to active forecast.`,
+        });
+      }
+
       return next;
     });
   }
@@ -286,6 +300,9 @@ export function SubscriptionManager({ initialSubscriptions }: SubscriptionManage
         setSubscriptions((prev) =>
           prev.map((s) => (s.id === sub.id ? data.subscription : s)),
         );
+        toast.success('Subscription added', {
+          description: `${sub.merchantName} • MYR ${senToMyr(sub.amountSen)}/${sub.cycle}`,
+        });
       } else {
         const { id, ...updatePayload } = sub;
         const res = await fetch(`/api/subscriptions/${sub.id}`, {
@@ -294,9 +311,15 @@ export function SubscriptionManager({ initialSubscriptions }: SubscriptionManage
           body: JSON.stringify(updatePayload),
         });
         if (!res.ok) throw new Error('Failed to update');
+        toast.success('Subscription updated', {
+          description: `${sub.merchantName} changes saved.`,
+        });
       }
     } catch (error) {
       setSubscriptions(prevSubs);
+      toast.error('Failed to save subscription', {
+        description: 'Server error. Your changes were reverted.',
+      });
     }
   }
 
@@ -317,6 +340,7 @@ export function SubscriptionManager({ initialSubscriptions }: SubscriptionManage
   }
 
   async function handleSaveRatings(id: string, newRatings: ScoreInput) {
+    const sub = subscriptions.find((s) => s.id === id);
     const prevSubs = [...subscriptions];
 
     setSubscriptions((prev) => {
@@ -338,12 +362,17 @@ export function SubscriptionManager({ initialSubscriptions }: SubscriptionManage
         body: JSON.stringify(newRatings),
       });
       if (!res.ok) throw new Error('Failed to update ratings');
+      toast.success('Evaluation updated', {
+        description: `${sub?.merchantName || 'Subscription'} score recalculated.`,
+      });
     } catch (error) {
       setSubscriptions(prevSubs);
+      toast.error('Failed to save ratings');
     }
   }
 
   async function handleDelete(id: string) {
+    const deletedSub = subscriptions.find((s) => s.id === id);
     const prevSubs = [...subscriptions];
 
     setSubscriptions((prev) => prev.filter((s) => s.id !== id));
@@ -370,8 +399,12 @@ export function SubscriptionManager({ initialSubscriptions }: SubscriptionManage
         method: 'DELETE',
       });
       if (!res.ok) throw new Error('Failed to delete');
+      toast.info('Subscription deleted', {
+        description: `${deletedSub?.merchantName || 'Subscription'} removed from your active list.`,
+      });
     } catch (error) {
       setSubscriptions(prevSubs);
+      toast.error('Failed to delete subscription');
     }
   }
 
@@ -420,7 +453,7 @@ export function SubscriptionManager({ initialSubscriptions }: SubscriptionManage
   return (
     <div className="space-y-6">
       {/* Student Discount Optimizer Banner */}
-      <StudentSavingsCard summary={studentSavingsSummary} />
+      <StudentSavingsCard summary={studentSavingsSummary} isStudent={isStudent} />
 
       {/* Malaysian Student Starter Pack 1-Tap Add Grid */}
       <StudentStarterCatalog

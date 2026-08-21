@@ -99,6 +99,25 @@ export async function POST(request: Request) {
 
     // §11 step 3 — ownership enforced by user_id + RLS in repos/storage.
     const supabase = await createServerSupabase();
+
+    // Enforce statement_import consent check (§2.3 Privacy by Design)
+    const { data: consentRow } = await supabase
+      .from('consents')
+      .select('status')
+      .eq('user_id', user.id)
+      .eq('purpose', 'transaction_import')
+      .maybeSingle();
+
+    if (consentRow && consentRow.status === 'withdrawn') {
+      return NextResponse.json(
+        {
+          error: 'CONSENT_REQUIRED',
+          message: 'Statement import consent has been withdrawn. Please grant statement import consent in Privacy Settings before uploading files.',
+        },
+        { status: 403 },
+      );
+    }
+
     const transactionRepo = new SupabaseTransactionRepository(supabase);
     const candidateRepo = new SupabaseRecurringCandidateRepository(supabase);
 

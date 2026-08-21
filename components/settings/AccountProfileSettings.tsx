@@ -15,6 +15,8 @@ import {
   Loader2,
   Building2,
   Send,
+  Save,
+  AlertCircle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -25,8 +27,7 @@ import {
 } from '@/lib/validation/profile';
 import { myrToSen, senToMyr } from '@/lib/money';
 import { resolveUniversityDomain } from '@/features/settings/domainExtractor';
-
-const LOCAL_STORAGE_KEY = 'baki_user_profile_v1';
+import { toast } from '@/lib/toast';
 
 export interface AccountProfileSettingsProps {
   readonly initialUser?: {
@@ -34,31 +35,47 @@ export interface AccountProfileSettingsProps {
     readonly displayName?: string | null;
     readonly avatarUrl?: string | null;
   };
+  readonly initialProfile?: UserProfile | null;
 }
 
-export function AccountProfileSettings({ initialUser }: AccountProfileSettingsProps) {
+export function AccountProfileSettings({ initialUser, initialProfile }: AccountProfileSettingsProps) {
   const t = useTranslations('Settings');
   
   const [profile, setProfile] = useState<UserProfile>(() => {
-    // If authenticated user is passed from server/Google Auth, pre-populate
-    if (initialUser?.email) {
-      const emailDomain = resolveUniversityDomain(initialUser.email);
+    const defaultEmail = initialUser?.email || initialProfile?.email || DEFAULT_USER_PROFILE.email;
+    const defaultName =
+      (initialProfile?.displayName && initialProfile.displayName !== 'User' ? initialProfile.displayName : null) ||
+      initialUser?.displayName ||
+      initialProfile?.displayName ||
+      (defaultEmail ? defaultEmail.split('@')[0] : 'User');
+
+    const emailDomain = resolveUniversityDomain(defaultEmail);
+
+    if (initialProfile) {
       return {
-        ...DEFAULT_USER_PROFILE,
-        email: initialUser.email,
-        displayName: initialUser.displayName || DEFAULT_USER_PROFILE.displayName,
-        isStudent: emailDomain.isEdu,
-        educationTier: emailDomain.isEdu ? 'tertiary_student' : 'general',
-        universityDomain: emailDomain.isEdu ? emailDomain.domain : '',
+        ...initialProfile,
+        displayName: defaultName,
+        email: defaultEmail,
+        isStudent: initialProfile.isStudent || emailDomain.isEdu,
+        universityDomain: initialProfile.universityDomain || (emailDomain.isEdu ? emailDomain.domain : ''),
       };
     }
-    return DEFAULT_USER_PROFILE;
+
+    return {
+      ...DEFAULT_USER_PROFILE,
+      email: defaultEmail,
+      displayName: defaultName,
+      isStudent: emailDomain.isEdu,
+      educationTier: emailDomain.isEdu ? 'tertiary_student' : 'general',
+      universityDomain: emailDomain.isEdu ? emailDomain.domain : '',
+    };
   });
 
-  const [budgetInput, setBudgetInput] = useState<string>(
-    senToMyr(DEFAULT_USER_PROFILE.monthlyBudgetSen)
+  const [budgetInput, setBudgetInput] = useState<string>(() =>
+    senToMyr(initialProfile?.monthlyBudgetSen ?? DEFAULT_USER_PROFILE.monthlyBudgetSen)
   );
-  const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'idle'>('saved');
+  const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'idle' | 'error'>('saved');
+  const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [testEmailStatus, setTestEmailStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const [testEmailFeedback, setTestEmailFeedback] = useState<string | null>(null);
@@ -97,54 +114,48 @@ export function AccountProfileSettings({ initialUser }: AccountProfileSettingsPr
     }
   }
 
-  // Derive University & Domain matching dynamically from current email
+  // Derive University & Domain matching dynamically from universityDomain or current email
   const universityInfo = useMemo(() => {
-    return resolveUniversityDomain(profile.email);
-  }, [profile.email]);
+    return resolveUniversityDomain(profile.universityDomain || profile.email);
+  }, [profile.universityDomain, profile.email]);
 
-  // Load persisted profile from localStorage or sync with authenticated session
+  // Sync profile when initialProfile or initialUser changes from server
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        const validated = userProfileSchema.safeParse(parsed);
-        if (validated.success) {
-          // If session user email is available from Google OAuth, prioritize verified email
-          const merged: UserProfile = {
-            ...validated.data,
-            email: initialUser?.email || validated.data.email,
-            displayName: initialUser?.displayName || validated.data.displayName,
-          };
-          const domainMatch = resolveUniversityDomain(merged.email);
-          if (domainMatch.isEdu) {
-            merged.universityDomain = domainMatch.domain;
-            merged.isStudent = true;
-            merged.educationTier = 'tertiary_student';
-          } else if (merged.email.endsWith('@gmail.com') || merged.email.endsWith('@yahoo.com') || merged.email.endsWith('@outlook.com') || merged.email.endsWith('@hotmail.com')) {
-            if (merged.educationTier === 'tertiary_student' && !merged.universityDomain) {
-              merged.isStudent = false;
-              merged.educationTier = 'general';
-            }
-          }
-          setProfile(merged);
-          setBudgetInput(senToMyr(merged.monthlyBudgetSen));
-        }
-      } else if (initialUser?.email) {
-        const domainMatch = resolveUniversityDomain(initialUser.email);
-        setProfile((prev) => ({
-          ...prev,
-          email: initialUser.email!,
-          displayName: initialUser.displayName || prev.displayName,
-          isStudent: domainMatch.isEdu,
-          educationTier: domainMatch.isEdu ? 'tertiary_student' : 'general',
-          universityDomain: domainMatch.isEdu ? domainMatch.domain : '',
-        }));
-      }
-    } catch {
-      // Use fallback
+    const defaultEmail = initialUser?.email || initialProfile?.email || DEFAULT_USER_PROFILE.email;
+    const defaultName =
+      (initialProfile?.displayName && initialProfile.displayName !== 'User' ? initialProfile.displayName : null) ||
+      initialUser?.displayName ||
+      initialProfile?.displayName ||
+      (defaultEmail ? defaultEmail.split('@')[0] : 'User');
+
+    const emailDomain = resolveUniversityDomain(defaultEmail);
+    const domainToUse = initialProfile?.universityDomain || (emailDomain.isEdu ? emailDomain.domain : '');
+
+    if (initialProfile) {
+      const isStudent = initialProfile.isStudent || Boolean(domainToUse) || emailDomain.isEdu;
+      const educationTier = initialProfile.educationTier || (isStudent ? 'tertiary_student' : 'general');
+      const merged: UserProfile = {
+        ...initialProfile,
+        displayName: defaultName,
+        email: defaultEmail,
+        universityDomain: domainToUse,
+        isStudent,
+        educationTier,
+      };
+      setProfile(merged);
+      setBudgetInput(senToMyr(initialProfile.monthlyBudgetSen));
+    } else if (initialUser?.email) {
+      setProfile({
+        ...DEFAULT_USER_PROFILE,
+        email: defaultEmail,
+        displayName: defaultName,
+        isStudent: emailDomain.isEdu,
+        educationTier: emailDomain.isEdu ? 'tertiary_student' : 'general',
+        universityDomain: emailDomain.isEdu ? emailDomain.domain : '',
+      });
+      setBudgetInput(senToMyr(DEFAULT_USER_PROFILE.monthlyBudgetSen));
     }
-  }, [initialUser]);
+  }, [initialProfile, initialUser]);
 
   // Handle email change and auto-reflect domain
   const handleEmailChange = (newEmail: string) => {
@@ -152,11 +163,65 @@ export function AccountProfileSettings({ initialUser }: AccountProfileSettingsPr
     setProfile((prev) => ({
       ...prev,
       email: newEmail,
-      universityDomain: domainInfo.isEdu ? domainInfo.domain : '',
-      isStudent: domainInfo.isEdu ? true : (prev.educationTier === 'tertiary_student' ? false : prev.isStudent),
-      educationTier: domainInfo.isEdu ? 'tertiary_student' : (prev.educationTier === 'tertiary_student' ? 'general' : prev.educationTier),
+      universityDomain: domainInfo.isEdu ? domainInfo.domain : prev.universityDomain,
+      isStudent: domainInfo.isEdu ? true : prev.isStudent,
+      educationTier: domainInfo.isEdu ? 'tertiary_student' : prev.educationTier,
     }));
   };
+
+  async function executeSave(candidateProfile: UserProfile): Promise<boolean> {
+    setSaveStatus('saving');
+    setSaveErrorMessage(null);
+
+    const isStudent = candidateProfile.educationTier === 'tertiary_student';
+    const cleanDomain = isStudent ? candidateProfile.universityDomain.trim() : '';
+
+    const payload: UserProfile = {
+      ...candidateProfile,
+      isStudent,
+      universityDomain: cleanDomain,
+    };
+
+    const result = userProfileSchema.safeParse(payload);
+    if (!result.success) {
+      const newErrors: Record<string, string> = {};
+      result.error.issues.forEach((issue) => {
+        newErrors[issue.path.join('.')] = issue.message;
+      });
+      setErrors(newErrors);
+      setSaveStatus('error');
+      setSaveErrorMessage('Please check required fields.');
+      return false;
+    }
+
+    try {
+      window.dispatchEvent(new Event('baki_profile_updated'));
+
+      const res = await fetch('/api/settings/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(result.data),
+      });
+
+      const responseData = await res.json().catch(() => ({}));
+
+      if (res.ok && responseData.success) {
+        setErrors({});
+        setSaveStatus('saved');
+        return true;
+      } else {
+        const msg = responseData.error || `Server returned error (${res.status})`;
+        setSaveStatus('error');
+        setSaveErrorMessage(msg);
+        return false;
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Network error during save';
+      setSaveStatus('error');
+      setSaveErrorMessage(msg);
+      return false;
+    }
+  }
 
   // Auto-Save Effect (Debounced 500ms — Quiet & Non-Intrusive Craft)
   useEffect(() => {
@@ -165,43 +230,62 @@ export function AccountProfileSettings({ initialUser }: AccountProfileSettingsPr
       return;
     }
 
-    setSaveStatus('saving');
     const timer = setTimeout(() => {
       const parsedSen = myrToSen(budgetInput || '0');
       if (parsedSen === null) {
         setErrors((prev) => ({ ...prev, budget: t('errorBudget') }));
-        setSaveStatus('idle');
+        setSaveStatus('error');
         return;
       }
+
+      const isStudent = profile.educationTier === 'tertiary_student';
+      const cleanDomain = isStudent ? profile.universityDomain.trim() : '';
 
       const candidate: UserProfile = {
         ...profile,
         monthlyBudgetSen: parsedSen,
-        isStudent: profile.educationTier === 'tertiary_student',
+        isStudent,
+        universityDomain: cleanDomain,
       };
 
-      const result = userProfileSchema.safeParse(candidate);
-      if (result.success) {
-        try {
-          localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(result.data));
-          window.dispatchEvent(new Event('baki_profile_updated'));
-          setErrors({});
-          setSaveStatus('saved');
-        } catch {
-          setSaveStatus('idle');
-        }
-      } else {
-        const newErrors: Record<string, string> = {};
-        result.error.issues.forEach((issue) => {
-          newErrors[issue.path.join('.')] = issue.message;
-        });
-        setErrors(newErrors);
-        setSaveStatus('idle');
-      }
-    }, 450);
+      executeSave(candidate);
+    }, 500);
 
     return () => clearTimeout(timer);
   }, [profile, budgetInput, t]);
+
+  const handleManualSave = async () => {
+    const parsedSen = myrToSen(budgetInput || '0');
+    if (parsedSen === null) {
+      setErrors((prev) => ({ ...prev, budget: t('errorBudget') }));
+      setSaveStatus('error');
+      toast.error('Invalid budget input', { description: 'Please enter a valid monetary amount.' });
+      return;
+    }
+
+    const isStudent = profile.educationTier === 'tertiary_student';
+    const cleanDomain = isStudent ? profile.universityDomain.trim() : '';
+
+    const candidate: UserProfile = {
+      ...profile,
+      monthlyBudgetSen: parsedSen,
+      isStudent,
+      universityDomain: cleanDomain,
+    };
+
+    const saved = await executeSave(candidate);
+    if (saved) {
+      toast.success('Settings saved', {
+        description: 'Your profile and financial preferences have been saved.',
+      });
+    } else {
+      toast.error('Save failed', {
+        description: 'Unable to save profile settings. Please try again.',
+      });
+    }
+  };
+
+
 
   const getInitials = (name: string) => {
     return (
@@ -235,16 +319,29 @@ export function AccountProfileSettings({ initialUser }: AccountProfileSettingsPr
             {saveStatus === 'saving' ? (
               <span className="inline-flex items-center gap-1 text-text-muted animate-pulse">
                 <Loader2 className="w-3 h-3 animate-spin text-accent" />
-                <span>Saving…</span>
+                <span>Saving to database…</span>
               </span>
             ) : saveStatus === 'saved' ? (
               <span className="inline-flex items-center gap-1.5 text-status-emerald-text">
                 <span className="w-1.5 h-1.5 rounded-full bg-status-emerald-text inline-block" />
                 <span>{t('savedSuccessMessage')}</span>
               </span>
+            ) : saveStatus === 'error' ? (
+              <span className="inline-flex items-center gap-1.5 text-status-rose-text">
+                <AlertCircle className="w-3.5 h-3.5" />
+                <span>Save failed</span>
+              </span>
             ) : null}
           </div>
         </div>
+
+        {saveErrorMessage && (
+          <div className="p-3.5 rounded-xl bg-status-rose-surface border border-status-rose-border text-status-rose-text text-xs flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{saveErrorMessage}</span>
+          </div>
+        )}
+
 
         <div className="border border-border-1 rounded-xl bg-surface-1 p-5 space-y-5">
           {/* Identity Header Banner */}
@@ -401,6 +498,7 @@ export function AccountProfileSettings({ initialUser }: AccountProfileSettingsPr
                       ...p,
                       educationTier: opt.id as EducationTier,
                       isStudent: opt.id === 'tertiary_student',
+                      universityDomain: opt.id === 'tertiary_student' ? p.universityDomain : '',
                     }))
                   }
                   className={cn(
@@ -746,6 +844,44 @@ export function AccountProfileSettings({ initialUser }: AccountProfileSettingsPr
           </div>
         </div>
       </section>
+
+      {/* 5. Explicit Save Action Bar */}
+      <div className="pt-2 flex items-center justify-between gap-4 flex-wrap border-t border-border-1">
+        <p className="text-xs text-text-muted">
+          Changes are auto-synced to your secure database profile.
+        </p>
+        <button
+          type="button"
+          onClick={handleManualSave}
+          disabled={saveStatus === 'saving'}
+          className={cn(
+            'inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-medium text-sm transition-all shadow-xs cursor-pointer',
+            saveStatus === 'saving'
+              ? 'bg-surface-3 text-text-muted cursor-not-allowed opacity-75'
+              : saveStatus === 'saved'
+              ? 'bg-status-emerald-surface text-status-emerald-text border border-status-emerald-border hover:bg-status-emerald-surface/80'
+              : 'bg-accent text-accent-foreground hover:bg-accent/90'
+          )}
+        >
+          {saveStatus === 'saving' ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>Saving to database...</span>
+            </>
+          ) : saveStatus === 'saved' ? (
+            <>
+              <Check className="w-4 h-4 text-status-emerald-text" />
+              <span>Saved to Database</span>
+            </>
+          ) : (
+            <>
+              <Save className="w-4 h-4" />
+              <span>Save Changes</span>
+            </>
+          )}
+        </button>
+      </div>
     </div>
   );
 }
+

@@ -1,15 +1,63 @@
-import { useTranslations } from 'next-intl';
+import { getTranslations } from 'next-intl/server';
 import { AppShell } from '@/components/layout/AppShell';
 import { PrivacyPanel } from '@/components/privacy/PrivacyPanel';
 import { syntheticAuditEvents, syntheticConsents } from '@/tests/fixtures/consents';
+import { createClient } from '@/lib/supabase/server';
+import {
+  CONSENT_PURPOSES,
+  CONSENT_RULE_VERSION,
+  SupabaseConsentRepository,
+  type ConsentRecord,
+  type AuditEvent,
+} from '@/features/consent';
 
 /**
- * M3 — Consent & Data Control Panel (server-rendered shell).
- * Synthetic fixtures stand in for the ConsentRepository until a DB adapter
- * lands (§5.3); the client component owns the interactive state.
+ * M3 — Consent & Data Control Panel (server-rendered shell §5.1, §11).
+ * Hydrates real user consents and audit events from Supabase PostgreSQL.
  */
-export default function PrivacyPage() {
-  const t = useTranslations('Privacy');
+export default async function PrivacyPage() {
+  const t = await getTranslations('Privacy');
+
+  let initialConsents: readonly ConsentRecord[] = syntheticConsents;
+  let initialAuditEvents: readonly AuditEvent[] = syntheticAuditEvents;
+
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (user) {
+      const repo = new SupabaseConsentRepository(supabase);
+      const [consents, auditEvents] = await Promise.all([
+        repo.listConsents(user.id),
+        repo.listAuditEvents(user.id),
+      ]);
+
+      // Ensure all canonical consent purposes are present in the list with standard signup defaults
+      initialConsents = CONSENT_PURPOSES.map((purpose) => {
+        const existing = consents.find((c) => c.purpose === purpose);
+        if (existing) return existing;
+
+        const isDefaultGranted =
+          purpose === 'transaction_import' ||
+          purpose === 'ai_assist' ||
+          purpose === 'notifications';
+
+        return {
+          purpose,
+          status: isDefaultGranted ? ('granted' as const) : ('withdrawn' as const),
+          consentVersion: CONSENT_RULE_VERSION,
+          grantedAt: isDefaultGranted ? user.created_at || new Date().toISOString() : null,
+          withdrawnAt: null,
+        };
+      });
+
+      initialAuditEvents = auditEvents;
+    }
+  } catch (error) {
+    console.error('[PrivacyPage] Server hydration error:', error);
+  }
 
   return (
     <AppShell title={t('title')}>
@@ -21,10 +69,11 @@ export default function PrivacyPage() {
           <p className="text-sm text-text-muted">{t('subtitle')}</p>
         </div>
         <PrivacyPanel
-          initialConsents={syntheticConsents}
-          initialAuditEvents={syntheticAuditEvents}
+          initialConsents={initialConsents}
+          initialAuditEvents={initialAuditEvents}
         />
       </div>
     </AppShell>
   );
 }
+

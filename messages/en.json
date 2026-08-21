@@ -636,6 +636,12 @@
       "consent_withdrawn": "Consent withdrawn",
       "data_exported": "Data exported",
       "account_deletion_requested": "Account deletion requested"
+    },
+    "pagination": {
+      "pageOf": "Page {current} of {total}",
+      "showingEvents": "Showing {start}–{end} of {total} events",
+      "prev": "Previous",
+      "next": "Next"
     }
   },
   "Landing": {

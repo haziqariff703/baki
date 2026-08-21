@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { userProfileSchema } from '@/lib/validation/profile';
 import { SupabaseProfileRepository } from '@/features/settings/repository';
@@ -18,13 +18,19 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const fallbackUser = {
+      email: user.email,
+      displayName:
+        user.user_metadata?.full_name ||
+        user.user_metadata?.name ||
+        user.email?.split('@')[0],
+    };
+
     const repo = new SupabaseProfileRepository(supabase);
-    const profile = await repo.getProfile(user.id);
+    const profile = await repo.getProfile(user.id, fallbackUser);
 
     return NextResponse.json({
-      profile: profile
-        ? { ...profile, email: user.email || profile.email }
-        : null,
+      profile,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Internal error';

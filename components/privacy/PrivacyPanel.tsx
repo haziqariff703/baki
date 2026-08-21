@@ -35,6 +35,7 @@ import {
   type ExportFormat,
 } from '@/features/consent';
 import { deletionConfirmationSchema } from '@/lib/validation';
+import { toast } from '@/lib/toast';
 
 interface PrivacyPanelProps {
   readonly initialConsents: readonly ConsentRecord[];
@@ -56,78 +57,166 @@ export function PrivacyPanel({ initialConsents, initialAuditEvents }: PrivacyPan
   const [audit, setAudit] = useState<readonly AuditEvent[]>(initialAuditEvents);
   const [exportFormat, setExportFormat] = useState<ExportFormat>('json');
   const [exportReady, setExportReady] = useState<string | null>(null);
+  const [updatingPurpose, setUpdatingPurpose] = useState<ConsentPurpose | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Audit trail pagination (10 per page)
+  const [auditPage, setAuditPage] = useState<number>(1);
+  const AUDIT_PAGE_SIZE = 10;
+
+  // Sync state if server props change
+  useEffect(() => {
+    setConsents(initialConsents);
+    setAudit(initialAuditEvents);
+  }, [initialConsents, initialAuditEvents]);
 
   // Delete dialog state
   const [dialogOpen, setDialogOpen] = useState(false);
   const [typed, setTyped] = useState('');
   const [deleteError, setDeleteError] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const openButtonRef = useRef<HTMLButtonElement>(null);
 
-  function toggle(purpose: ConsentPurpose): void {
+  async function toggle(purpose: ConsentPurpose): Promise<void> {
+    const current = consents.find((r) => r.purpose === purpose);
+    const currentlyGranted = current?.status === 'granted';
+    const nextStatus = currentlyGranted ? 'withdrawn' : 'granted';
     const now = new Date().toISOString();
+
+    setUpdatingPurpose(purpose);
+    setErrorMessage(null);
+
+    // Optimistic UI update
     setConsents((prev) =>
       prev.map((r) => {
         if (r.purpose !== purpose) return r;
-        const granted = r.status === 'granted';
-        const next = granted
-          ? withdrawConsent(r, now)
-          : grantConsent(r, CONSENT_RULE_VERSION, now);
-        setAudit((a) =>
-          appendAuditEvent(a, granted
-            ? { type: 'consent_withdrawn', purpose, at: now }
-            : { type: 'consent_granted', purpose, at: now }),
-        );
-        return next;
-      }),
+        return {
+          ...r,
+          status: nextStatus,
+          grantedAt: nextStatus === 'granted' ? now : r.grantedAt,
+          withdrawnAt: nextStatus === 'withdrawn' ? now : r.withdrawnAt,
+        };
+      })
     );
+
+    try {
+      const res = await fetch(`/api/privacy/consents/${purpose}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: nextStatus }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (res.ok && data.consent) {
+        setConsents((prev) =>
+          prev.map((r) => (r.purpose === purpose ? data.consent : r))
+        );
+        const newEvent: AuditEvent =
+          nextStatus === 'granted'
+            ? { type: 'consent_granted', purpose, at: data.consent.grantedAt || now }
+            : { type: 'consent_withdrawn', purpose, at: data.consent.withdrawnAt || now };
+        setAudit((prev) => [newEvent, ...prev]);
+        setAuditPage(1);
+
+        if (nextStatus === 'granted') {
+          toast.success('Consent granted', {
+            description: `Permission updated. Audit log recorded.`,
+          });
+        } else {
+          toast.warning('Consent withdrawn', {
+            description: `Permission revoked. Audit log recorded.`,
+          });
+        }
+      } else {
+        // Rollback on server rejection
+        setConsents(initialConsents);
+        const err = data.error || 'Failed to save consent change';
+        setErrorMessage(err);
+        toast.error('Update failed', { description: err });
+      }
+    } catch (err) {
+      // Rollback on network failure
+      setConsents(initialConsents);
+      const msg = err instanceof Error ? err.message : 'Network error';
+      setErrorMessage(msg);
+      toast.error('Network error', { description: msg });
+    } finally {
+      setUpdatingPurpose(null);
+    }
   }
 
-  function doExport(): void {
+  async function doExport(): Promise<void> {
     const now = new Date().toISOString();
-    const payload = buildExportPayload(exportFormat, now);
+    setErrorMessage(null);
 
-    // Generate real downloadable file for user
-    if (typeof window !== 'undefined') {
-      let content = '';
-      let mimeType = 'application/json';
-      let extension = 'json';
+    try {
+      const res = await fetch('/api/privacy/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ format: exportFormat }),
+      });
 
-      if (exportFormat === 'json') {
-        content = JSON.stringify(
-          {
-            ...payload,
-            consents,
-            auditLog: audit,
-          },
-          null,
-          2,
-        );
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `baki-privacy-export-${now.slice(0, 10)}.${exportFormat}`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+
+        setExportReady(now);
+        setAudit((prev) => [
+          { type: 'data_exported', format: exportFormat, at: now },
+          ...prev,
+        ]);
+        setAuditPage(1);
+
+        toast.success('Data exported successfully', {
+          description: `Download started for ${exportFormat.toUpperCase()} archive.`,
+        });
       } else {
-        mimeType = 'text/csv';
-        extension = 'csv';
-        const rows = [
-          ['Section', 'Identifier', 'Status', 'Timestamp'],
-          ...consents.map((c) => ['Consent', c.purpose, c.status, c.grantedAt ?? c.withdrawnAt ?? '']),
-          ...audit.map((a) => ['Audit', a.type, 'Logged', a.at]),
-        ];
-        content = rows.map((r) => r.map((cell) => `"${cell}"`).join(',')).join('\n');
+        // Fallback local export
+        const payload = buildExportPayload(exportFormat, now);
+        let content = '';
+        let mimeType = 'application/json';
+        if (exportFormat === 'json') {
+          content = JSON.stringify({ ...payload, consents, auditLog: audit }, null, 2);
+        } else {
+          mimeType = 'text/csv';
+          const rows = [
+            ['Section', 'Identifier', 'Status', 'Timestamp'],
+            ...consents.map((c) => ['Consent', c.purpose, c.status, c.grantedAt ?? c.withdrawnAt ?? '']),
+            ...audit.map((a) => ['Audit', a.type, 'Logged', a.at]),
+          ];
+          content = rows.map((r) => r.map((cell) => `"${cell}"`).join(',')).join('\n');
+        }
+        const blob = new Blob([content], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `baki-privacy-export-${now.slice(0, 10)}.${exportFormat}`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+
+        setExportReady(now);
+        toast.success('Data exported (local fallback)', {
+          description: `Download started for ${exportFormat.toUpperCase()} archive.`,
+        });
       }
-
-      const blob = new Blob([content], { type: mimeType });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `baki-privacy-export-${now.slice(0, 10)}.${extension}`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+    } catch {
+      setErrorMessage('Export failed. Please try again.');
+      toast.error('Export failed', {
+        description: 'Unable to generate export archive. Please try again.',
+      });
     }
-
-    setExportReady(`${payload.generatedAt}`);
-    setAudit((a) => appendAuditEvent(a, { type: 'data_exported', format: exportFormat, at: now }));
   }
 
   function openDialog(): void {
@@ -141,7 +230,7 @@ export function PrivacyPanel({ initialConsents, initialAuditEvents }: PrivacyPan
     openButtonRef.current?.focus();
   }
 
-  function confirmDelete(): void {
+  async function confirmDelete(): Promise<void> {
     const gate = validateDeletionConfirmation(typed, DELETION_PHRASE);
     const parsed = deletionConfirmationSchema.safeParse({
       phrase: typed,
@@ -149,11 +238,38 @@ export function PrivacyPanel({ initialConsents, initialAuditEvents }: PrivacyPan
     });
     if (!gate.allowed || !parsed.success) {
       setDeleteError(true);
+      toast.error('Invalid confirmation phrase', {
+        description: 'Please type the exact deletion phrase.',
+      });
       return;
     }
-    const now = new Date().toISOString();
-    setAudit((a) => appendAuditEvent(a, { type: 'account_deletion_requested', at: now }));
-    closeDialog();
+
+    setIsDeleting(true);
+    try {
+      const res = await fetch('/api/privacy/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phrase: typed }),
+      });
+
+      if (res.ok) {
+        closeDialog();
+        toast.warning('Account deleted', {
+          description: 'Your account and personal records have been removed.',
+        });
+        window.location.href = '/login';
+      } else {
+        setDeleteError(true);
+        toast.error('Deletion request failed', {
+          description: 'Server could not process deletion. Please try again.',
+        });
+      }
+    } catch {
+      setDeleteError(true);
+      toast.error('Network error during deletion');
+    } finally {
+      setIsDeleting(false);
+    }
   }
 
   // Focus the input when the dialog opens; Escape closes
@@ -169,8 +285,23 @@ export function PrivacyPanel({ initialConsents, initialAuditEvents }: PrivacyPan
     return undefined;
   }, [dialogOpen]);
 
+  // Audit trail pagination calculations
+  const totalAuditEvents = audit.length;
+  const totalAuditPages = Math.max(1, Math.ceil(totalAuditEvents / AUDIT_PAGE_SIZE));
+  const currentAuditPage = Math.min(Math.max(1, auditPage), totalAuditPages);
+  const startAuditIndex = (currentAuditPage - 1) * AUDIT_PAGE_SIZE;
+  const endAuditIndex = Math.min(startAuditIndex + AUDIT_PAGE_SIZE, totalAuditEvents);
+  const paginatedAudit = audit.slice(startAuditIndex, endAuditIndex);
+
   return (
     <div className="space-y-6">
+      {errorMessage && (
+        <div role="alert" className="p-3 bg-status-rose-surface border border-status-rose-border text-status-rose-text rounded-xl text-xs flex items-center justify-between">
+          <span>{errorMessage}</span>
+          <button type="button" onClick={() => setErrorMessage(null)} className="font-semibold text-xs underline cursor-pointer">Dismiss</button>
+        </div>
+      )}
+
       {/* ── Document Wipe & Storage Transparency Panel ─────────────────── */}
       <section
         aria-labelledby="wipe-status-heading"
@@ -241,6 +372,7 @@ export function PrivacyPanel({ initialConsents, initialAuditEvents }: PrivacyPan
                 const record = consents.find((r) => r.purpose === purpose);
                 if (!record) return null;
                 const granted = record.status === 'granted';
+                const isUpdating = updatingPurpose === purpose;
                 return (
                   <li key={purpose} className="px-5 py-4 flex items-center justify-between gap-4">
                     <div className="min-w-0">
@@ -259,10 +391,11 @@ export function PrivacyPanel({ initialConsents, initialAuditEvents }: PrivacyPan
                     <button
                       type="button"
                       role="switch"
+                      disabled={isUpdating}
                       aria-checked={granted}
                       aria-label={t(`purpose.${purpose}.label`)}
                       onClick={() => toggle(purpose)}
-                      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface-0 ${
+                      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface-0 cursor-pointer disabled:opacity-50 ${
                         granted
                           ? 'bg-status-emerald-surface border-status-emerald-border'
                           : 'bg-surface-2 border-border-2'
@@ -295,7 +428,7 @@ export function PrivacyPanel({ initialConsents, initialAuditEvents }: PrivacyPan
                 type="button"
                 ref={openButtonRef}
                 onClick={openDialog}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-status-rose-border bg-status-rose-surface text-status-rose-text text-xs font-semibold hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent transition-colors"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-status-rose-border bg-status-rose-surface text-status-rose-text text-xs font-semibold hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent transition-colors cursor-pointer"
               >
                 <Trash2 className="w-4 h-4" />
                 {t('deleteAction')}
@@ -318,7 +451,7 @@ export function PrivacyPanel({ initialConsents, initialAuditEvents }: PrivacyPan
                     type="button"
                     onClick={() => setExportFormat('json')}
                     aria-pressed={exportFormat === 'json'}
-                    className={`inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent transition-colors ${
+                    className={`inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent transition-colors cursor-pointer ${
                       exportFormat === 'json'
                         ? 'bg-surface-3 text-text-primary'
                         : 'bg-surface-2 text-text-muted hover:text-text-primary'
@@ -330,7 +463,7 @@ export function PrivacyPanel({ initialConsents, initialAuditEvents }: PrivacyPan
                     type="button"
                     onClick={() => setExportFormat('csv')}
                     aria-pressed={exportFormat === 'csv'}
-                    className={`inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent transition-colors ${
+                    className={`inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent transition-colors cursor-pointer ${
                       exportFormat === 'csv'
                         ? 'bg-surface-3 text-text-primary'
                         : 'bg-surface-2 text-text-muted hover:text-text-primary'
@@ -342,7 +475,7 @@ export function PrivacyPanel({ initialConsents, initialAuditEvents }: PrivacyPan
                 <button
                   type="button"
                   onClick={doExport}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-status-blue-border bg-status-blue-surface text-status-blue-text text-xs font-semibold hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent transition-colors"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-status-blue-border bg-status-blue-surface text-status-blue-text text-xs font-semibold hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent transition-colors cursor-pointer"
                 >
                   <Download className="w-4 h-4" />
                   {t('exportAction')}
@@ -350,32 +483,76 @@ export function PrivacyPanel({ initialConsents, initialAuditEvents }: PrivacyPan
               </div>
               {exportReady && (
                 <p className="text-xs text-text-muted" role="status" aria-live="polite">
-                  {t('exportReady')} <span className="font-mono text-text-primary">{exportReady}</span>
+                  {t('exportReady')} <span className="font-mono text-text-primary">{formatDate(exportReady)}</span>
                 </p>
               )}
             </div>
           </section>
 
-          {/* Audit trail */}
+          {/* Audit trail with 10-item pagination */}
           <section aria-labelledby="audit-heading" className="space-y-3">
-            <h2 id="audit-heading" className="text-xs font-mono uppercase tracking-wider text-text-faint">
-              {t('auditHeading')}
-            </h2>
-            <ul className="divide-y divide-border-1 border border-border-1 rounded-xl bg-surface-1">
-              {audit.length === 0 && (
-                <li className="px-5 py-4 text-xs text-text-muted">{t('auditEmpty')}</li>
+            <div className="flex items-center justify-between">
+              <h2 id="audit-heading" className="text-xs font-mono uppercase tracking-wider text-text-faint">
+                {t('auditHeading')}
+              </h2>
+              {totalAuditEvents > 0 && (
+                <span className="font-mono text-[11px] text-text-faint">
+                  {totalAuditEvents} {totalAuditEvents === 1 ? 'record' : 'records'}
+                </span>
               )}
-              {[...audit].reverse().map((e, i) => (
-                <li key={`${e.at}-${i}`} className="px-5 py-3 flex items-center justify-between gap-4">
-                  <span className="text-xs text-text-secondary">
-                    {t(`audit.${e.type}`)}
-                    {'purpose' in e ? ` · ${t(`purpose.${e.purpose}.label`)}` : ''}
-                    {'format' in e ? ` · ${e.format.toUpperCase()}` : ''}
+            </div>
+
+            <div className="border border-border-1 rounded-xl bg-surface-1 overflow-hidden">
+              <ul className="divide-y divide-border-1">
+                {paginatedAudit.length === 0 && (
+                  <li className="px-5 py-4 text-xs text-text-muted">{t('auditEmpty')}</li>
+                )}
+                {paginatedAudit.map((e, i) => (
+                  <li key={`${e.at}-${i}`} className="px-5 py-3 flex items-center justify-between gap-4">
+                    <span className="text-xs text-text-secondary">
+                      {t(`audit.${e.type}`)}
+                      {'purpose' in e ? ` · ${t(`purpose.${e.purpose}.label`)}` : ''}
+                      {'format' in e ? ` · ${e.format.toUpperCase()}` : ''}
+                    </span>
+                    <span className="font-mono text-xs text-text-faint">{formatDate(e.at)}</span>
+                  </li>
+                ))}
+              </ul>
+
+              {/* 10-Item Limit Pagination Bar */}
+              {totalAuditEvents > AUDIT_PAGE_SIZE && (
+                <div className="flex items-center justify-between p-3 border-t border-border-1 bg-surface-2/30 text-xs text-text-muted">
+                  <span className="text-[11px]">
+                    {t('pagination.showingEvents', {
+                      start: startAuditIndex + 1,
+                      end: endAuditIndex,
+                      total: totalAuditEvents,
+                    })}
                   </span>
-                  <span className="font-mono text-xs text-text-faint">{formatDate(e.at)}</span>
-                </li>
-              ))}
-            </ul>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      disabled={currentAuditPage <= 1}
+                      onClick={() => setAuditPage((p) => Math.max(1, p - 1))}
+                      className="px-2.5 py-1 rounded-lg border border-border-2 bg-surface-1 text-text-secondary hover:text-text-primary disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-xs font-medium cursor-pointer"
+                    >
+                      {t('pagination.prev')}
+                    </button>
+                    <span className="font-mono text-xs text-text-faint px-1">
+                      {t('pagination.pageOf', { current: currentAuditPage, total: totalAuditPages })}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={currentAuditPage >= totalAuditPages}
+                      onClick={() => setAuditPage((p) => Math.min(totalAuditPages, p + 1))}
+                      className="px-2.5 py-1 rounded-lg border border-border-2 bg-surface-1 text-text-secondary hover:text-text-primary disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-xs font-medium cursor-pointer"
+                    >
+                      {t('pagination.next')}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </section>
         </div>
       </div>
