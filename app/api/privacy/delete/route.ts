@@ -48,6 +48,10 @@ export async function POST(request: Request) {
     await supabase.from('imports').delete().eq('user_id', user.id);
     await supabase.from('subscriptions').delete().eq('user_id', user.id);
     await supabase.from('user_consents').delete().eq('user_id', user.id);
+    await supabase.from('profiles').delete().eq('id', user.id);
+
+    // Sign out user session
+    await supabase.auth.signOut();
 
     return NextResponse.json({ recorded: true, wiped: true });
   } catch (error) {

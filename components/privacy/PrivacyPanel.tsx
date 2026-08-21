@@ -233,15 +233,15 @@ export function PrivacyPanel({ initialConsents, initialAuditEvents }: PrivacyPan
   }
 
   async function confirmDelete(): Promise<void> {
-    const gate = validateDeletionConfirmation(typed, DELETION_PHRASE);
+    const trimmed = typed.trim();
+    const gate = validateDeletionConfirmation(trimmed, DELETION_PHRASE);
     const parsed = deletionConfirmationSchema.safeParse({
-      phrase: typed,
-      requestedAt: new Date().toISOString(),
+      phrase: trimmed,
     });
     if (!gate.allowed || !parsed.success) {
       setDeleteError(true);
       toast.error('Invalid confirmation phrase', {
-        description: 'Please type the exact deletion phrase.',
+        description: 'Please type DELETE to confirm.',
       });
       return;
     }
@@ -251,7 +251,7 @@ export function PrivacyPanel({ initialConsents, initialAuditEvents }: PrivacyPan
       const res = await fetch('/api/privacy/delete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phrase: typed }),
+        body: JSON.stringify({ phrase: trimmed }),
       });
 
       if (res.ok) {
