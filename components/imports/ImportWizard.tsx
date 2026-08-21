@@ -25,6 +25,8 @@ import {
   ShieldCheck,
   Eye,
   EyeOff,
+  Camera,
+  ImageIcon,
   type LucideIcon,
 } from 'lucide-react';
 import {
@@ -32,6 +34,7 @@ import {
   parsePdfText,
   extractTransactionsFromText,
   parseReceiptLines,
+  recognizeReceiptImage,
   MAX_CSV_ROWS,
   MAX_PDF_PAGES,
 } from '@/features/imports';
@@ -76,8 +79,10 @@ function Notice({ Icon, children }: { readonly Icon: LucideIcon; readonly childr
 export function ImportWizard() {
   const t = useTranslations('Imports');
   const inputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<File | null>(null); // the original file, kept for server persist
   const [status, setStatus] = useState<Status>({ state: 'idle' });
+  const [ocrProgress, setOcrProgress] = useState<number | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const [errorsOpen, setErrorsOpen] = useState(false);
   const [persisting, setPersisting] = useState(false);
@@ -148,6 +153,7 @@ export function ImportWizard() {
     setErrorsOpen(false);
     setPersistMsg(null);
     setShowPasswordPrompt(false);
+    setOcrProgress(null);
 
     try {
       if (file.type === 'text/csv') {
@@ -163,19 +169,30 @@ export function ImportWizard() {
           outcome: { kind: 'csv', rows: result.rows, errors, truncated: result.truncated },
         });
       } else if (file.type.startsWith('image/')) {
-        const text = await file.text().catch(() => '');
-        const result = parseReceiptLines(text);
-        setStatus({
-          state: 'done',
-          fileName,
-          outcome: {
-            kind: 'pdf',
-            rows: result.rows,
-            errors: [],
-            truncated: false,
-            empty: result.rows.length === 0,
-          },
-        });
+        setOcrProgress(0);
+        try {
+          const result = await recognizeReceiptImage(file, (pct) => {
+            setOcrProgress(pct);
+          });
+          setStatus({
+            state: 'done',
+            fileName,
+            outcome: {
+              kind: 'pdf',
+              rows: result.rows,
+              errors: [],
+              truncated: false,
+              empty: result.rows.length === 0,
+            },
+          });
+        } catch {
+          setStatus({
+            state: 'error',
+            message: 'Could not read receipt image. Please ensure image has good lighting or paste the text directly.',
+          });
+        } finally {
+          setOcrProgress(null);
+        }
       } else {
         // PDF statements: send directly to the Node.js server route handler for fast, robust parsing
         const formData = new FormData();
@@ -457,21 +474,23 @@ export function ImportWizard() {
             <form onSubmit={handleUnlockPdf} className="space-y-4">
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-text-secondary">
-                  Statement Password / NRIC
+                  Statement Password / NRIC (12 digits)
                 </label>
                 <div className="relative">
                   <input
                     type={showPassword ? 'text' : 'password'}
+                    inputMode="numeric"
+                    autoComplete="off"
                     value={pdfPassword}
                     onChange={(e) => setPdfPassword(e.target.value)}
-                    placeholder="e.g. 990101-14-1234 or 990101"
-                    className="w-full px-3.5 py-2.5 pr-10 text-xs bg-surface-2 border border-border-2 rounded-xl text-text-primary focus:outline-none focus:border-accent"
+                    placeholder="e.g. 010203101234 (IC without dashes)"
+                    className="w-full px-3.5 py-3 pr-10 text-xs font-mono bg-surface-2 border border-border-2 rounded-xl text-text-primary focus:outline-none focus:border-accent min-h-[44px]"
                     autoFocus
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary p-1"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary p-2 min-h-[44px] min-w-[44px] flex items-center justify-center"
                     aria-label={showPassword ? 'Hide password' : 'Show password'}
                   >
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -491,7 +510,7 @@ export function ImportWizard() {
                 <div>
                   <span className="font-semibold text-status-emerald-text">We didn&apos;t keep your password</span>
                   <p className="text-[11px] text-text-muted mt-0.5">
-                    Decryption is executed purely in your browser&apos;s local memory. Your password and raw statement are never stored, logged, or sent to any server.
+                    Decryption runs locally in memory. Your password and raw files are never permanently saved or shared.
                   </p>
                 </div>
               </div>
@@ -500,22 +519,22 @@ export function ImportWizard() {
                 <button
                   type="submit"
                   disabled={!pdfPassword.trim() || parsing}
-                  className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-accent text-accent-fg text-xs font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 min-h-[40px]"
+                  className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-accent text-accent-fg text-xs font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 min-h-[44px]"
                 >
                   {parsing ? (
                     <>
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      <span>Decrypting & Parsing...</span>
+                      <span>Decrypting Statement...</span>
                     </>
                   ) : (
-                    <span>Decrypt & Parse Statement</span>
+                    <span>Unlock & Parse Statement</span>
                   )}
                 </button>
                 <button
                   type="button"
                   onClick={reset}
                   disabled={parsing}
-                  className="px-3.5 py-2.5 rounded-xl border border-border-2 bg-surface-2 text-text-muted hover:text-text-primary text-xs font-medium transition-colors min-h-[40px]"
+                  className="px-3.5 py-2.5 rounded-xl border border-border-2 bg-surface-2 text-text-muted hover:text-text-primary text-xs font-medium transition-colors min-h-[44px]"
                 >
                   Cancel
                 </button>
@@ -530,19 +549,19 @@ export function ImportWizard() {
                 type="button"
                 onClick={() => setActiveTab('upload')}
                 className={cn(
-                  'flex-1 py-1.5 rounded-lg text-center transition-all',
+                  'flex-1 py-2 rounded-lg text-center transition-all min-h-[38px]',
                   activeTab === 'upload'
                     ? 'bg-surface-1 text-text-primary shadow-xs font-semibold'
                     : 'text-text-muted hover:text-text-primary',
                 )}
               >
-                Upload Statement (PDF / CSV)
+                Upload File / Scan Slip
               </button>
               <button
                 type="button"
                 onClick={() => setActiveTab('paste')}
                 className={cn(
-                  'flex-1 py-1.5 rounded-lg text-center transition-all',
+                  'flex-1 py-2 rounded-lg text-center transition-all min-h-[38px]',
                   activeTab === 'paste'
                     ? 'bg-surface-1 text-text-primary shadow-xs font-semibold'
                     : 'text-text-muted hover:text-text-primary',
@@ -561,51 +580,92 @@ export function ImportWizard() {
                 onDragLeave={() => setDragActive(false)}
                 onDrop={onDrop}
                 className={cn(
-                  'bg-surface-1 border border-dashed rounded-xl p-8 md:p-12 flex flex-col items-center justify-center text-center space-y-4 transition-colors',
+                  'bg-surface-1 border border-dashed rounded-2xl p-6 sm:p-8 flex flex-col items-center justify-center text-center space-y-4 transition-colors',
                   dragActive ? 'border-accent bg-surface-2' : 'border-border-2',
                 )}
               >
-                <UploadCloud className="w-8 h-8 text-text-faint" aria-hidden="true" />
+                <div className="w-12 h-12 rounded-2xl bg-surface-2 border border-border-2 flex items-center justify-center">
+                  <UploadCloud className="w-6 h-6 text-text-muted" aria-hidden="true" />
+                </div>
                 <div className="space-y-1">
-                  <p className="text-base font-semibold text-text-primary">{t('dropzoneTitle')}</p>
-                  <p className="text-sm text-text-muted">
-                    {t('dropzoneHint', { maxSize: MAX_SIZE_MB })}
+                  <p className="text-sm sm:text-base font-semibold text-text-primary">
+                    {t('dropzoneTitle')}
+                  </p>
+                  <p className="text-xs text-text-muted">
+                    Supports PDF bank statements, CSV files, and transaction slip screenshots (PNG/JPG up to 5 MB)
                   </p>
                 </div>
 
+                {/* Hidden input for PDF/CSV */}
                 <input
                   ref={inputRef}
                   type="file"
-                  accept=".csv,.pdf,.png,.jpg,.jpeg,.webp,text/csv,application/pdf,image/png,image/jpeg,image/webp"
+                  accept=".csv,.pdf,text/csv,application/pdf"
                   onChange={onInputChange}
                   className="sr-only"
-                  aria-label={t('browseCta')}
+                  aria-label="Upload PDF or CSV"
                 />
-                <button
-                  type="button"
-                  onClick={() => inputRef.current?.click()}
-                  disabled={parsing}
-                  className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl border border-border-3 bg-surface-3 text-text-primary text-sm font-medium hover:bg-surface-2 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent disabled:opacity-50 min-h-[40px]"
-                >
-                  {parsing ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
-                      {t('parsing')}
-                    </>
-                  ) : (
-                    t('browseCta')
-                  )}
-                </button>
+
+                {/* Hidden input for Images/Camera */}
+                <input
+                  ref={imageInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp"
+                  onChange={onInputChange}
+                  className="sr-only"
+                  aria-label="Upload Receipt Screenshot"
+                />
+
+                {/* Dedicated Action Buttons for Mobile & Desktop */}
+                <div className="w-full flex flex-col sm:flex-row gap-2.5 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => inputRef.current?.click()}
+                    disabled={parsing}
+                    className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-border-3 bg-surface-3 text-text-primary text-xs sm:text-sm font-semibold hover:bg-surface-2 transition-colors min-h-[44px] shadow-2xs disabled:opacity-50"
+                  >
+                    {parsing && ocrProgress === null ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin text-accent" />
+                        <span>Parsing Statement...</span>
+                      </>
+                    ) : (
+                      <>
+                        <FileText className="w-4 h-4 text-accent" />
+                        <span>Select PDF / CSV</span>
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => imageInputRef.current?.click()}
+                    disabled={parsing}
+                    className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-accent/40 bg-accent/10 text-text-primary text-xs sm:text-sm font-semibold hover:bg-accent/20 transition-colors min-h-[44px] shadow-2xs disabled:opacity-50"
+                  >
+                    {parsing && ocrProgress !== null ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin text-accent" />
+                        <span>Scanning ({ocrProgress}%)...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Camera className="w-4 h-4 text-accent" />
+                        <span>Scan / Upload Slip</span>
+                      </>
+                    )}
+                  </button>
+                </div>
 
                 {status.state === 'error' && (
-                  <p role="alert" className="text-xs text-status-rose-text flex items-center gap-1.5">
+                  <p role="alert" className="text-xs text-status-rose-text flex items-center gap-1.5 pt-1">
                     <AlertTriangle className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
                     {status.message}
                   </p>
                 )}
               </div>
             ) : (
-              <div className="bg-surface-1 border border-border-2 rounded-xl p-5 space-y-3">
+              <div className="bg-surface-1 border border-border-2 rounded-2xl p-5 space-y-3">
                 <div className="space-y-1">
                   <p className="text-sm font-semibold text-text-primary">Paste Bank Statement Lines</p>
                   <p className="text-xs text-text-muted">
@@ -624,7 +684,7 @@ export function ImportWizard() {
                     type="button"
                     onClick={handleParsePastedText}
                     disabled={!pastedText.trim() || parsing}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-accent text-accent-fg text-xs font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-accent text-accent-fg text-xs font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 min-h-[40px]"
                   >
                     {parsing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
                     Parse Transactions
@@ -634,7 +694,7 @@ export function ImportWizard() {
             )}
 
             {/* 1-Click Sample Malaysian Presets */}
-            <div className="bg-surface-1 border border-border-1 rounded-xl p-4 sm:p-5 space-y-3">
+            <div className="bg-surface-1 border border-border-1 rounded-2xl p-4 sm:p-5 space-y-3">
               <div className="flex items-center gap-2">
                 <h2 className="text-xs font-mono uppercase tracking-wider text-text-faint">
                   {t('demoPresetHeading')}
@@ -645,7 +705,7 @@ export function ImportWizard() {
                 <button
                   type="button"
                   onClick={() => loadSamplePreset('student')}
-                  className="w-full text-left p-3 rounded-xl border border-border-2 bg-surface-2/40 hover:bg-surface-2 hover:border-border-3 transition-colors space-y-1"
+                  className="w-full text-left p-3 rounded-xl border border-border-2 bg-surface-2/40 hover:bg-surface-2 hover:border-border-3 transition-colors space-y-1 min-h-[44px]"
                 >
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-semibold text-text-primary">
@@ -659,7 +719,7 @@ export function ImportWizard() {
                 <button
                   type="button"
                   onClick={() => loadSamplePreset('worker')}
-                  className="w-full text-left p-3 rounded-xl border border-border-2 bg-surface-2/40 hover:bg-surface-2 hover:border-border-3 transition-colors space-y-1"
+                  className="w-full text-left p-3 rounded-xl border border-border-2 bg-surface-2/40 hover:bg-surface-2 hover:border-border-3 transition-colors space-y-1 min-h-[44px]"
                 >
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-semibold text-text-primary">
@@ -701,26 +761,26 @@ export function ImportWizard() {
           <section
             aria-labelledby="import-results-heading"
             aria-live="polite"
-            className="bg-surface-1 border border-border-1 rounded-xl overflow-hidden"
+            className="bg-surface-1 border border-border-1 rounded-2xl overflow-hidden shadow-2xs"
           >
-          <div className="p-6 md:p-8 space-y-5">
+          <div className="p-5 sm:p-7 space-y-5">
             <div className="border-b border-border-1 pb-4 flex items-baseline justify-between gap-4 flex-wrap">
               <div>
                 <h2
                   id="import-results-heading"
-                  className="text-xl font-semibold tracking-[-0.01em] leading-[1.25] text-text-primary"
+                  className="text-lg sm:text-xl font-semibold tracking-[-0.01em] leading-[1.25] text-text-primary"
                 >
                   {t('resultsHeading')}
                 </h2>
-                <p className="text-sm text-text-muted mt-1">{t('resultsSub')}</p>
+                <p className="text-xs sm:text-sm text-text-muted mt-0.5">{t('resultsSub')}</p>
               </div>
-              <span className="font-mono text-xs uppercase tracking-wider text-text-faint flex items-center gap-1.5">
+              <span className="font-mono text-xs uppercase tracking-wider text-text-faint flex items-center gap-1.5 bg-surface-2 border border-border-2 px-2.5 py-1 rounded-lg">
                 <FileText className="w-3.5 h-3.5" aria-hidden="true" />
                 {done.fileName}
               </span>
             </div>
 
-            <p className="text-sm text-text-secondary">
+            <p className="text-xs sm:text-sm text-text-secondary">
               {t('resultsCount', { count: outcome.rows.length })}
             </p>
 
@@ -742,29 +802,59 @@ export function ImportWizard() {
 
             {outcome.rows.length > 0 && (
               <div className="space-y-3">
-                <ul className="divide-y divide-border-1 border border-border-1 rounded-xl bg-surface-2">
+                {/* Mobile Responsive Cards (< sm screens) */}
+                <div className="sm:hidden space-y-2.5">
                   {outcome.rows
                     .slice((previewPage - 1) * PREVIEW_PAGE_SIZE, previewPage * PREVIEW_PAGE_SIZE)
                     .map((row, i) => (
-                      <li
+                      <div
                         key={`${row.merchantName}-${row.transactionDate}-${i}`}
-                        className="flex items-center justify-between gap-3 px-5 py-3 hover:bg-surface-3/50 transition-colors"
+                        className="p-3.5 rounded-xl border border-border-2 bg-surface-2 flex items-center justify-between gap-3"
                       >
-                        <span className="flex items-center gap-3 min-w-0">
-                          <BrandLogo merchantName={row.merchantName} size={24} />
-                          <span className="font-mono text-xs text-text-faint w-24 shrink-0">
-                            {toDatePart(row.transactionDate)}
-                          </span>
-                          <span className="text-sm font-medium text-text-primary truncate">
-                            {row.merchantName}
-                          </span>
+                        <div className="flex items-center gap-3 min-w-0">
+                          <BrandLogo merchantName={row.merchantName} size={30} />
+                          <div className="min-w-0 space-y-0.5">
+                            <p className="text-xs font-semibold text-text-primary truncate">
+                              {row.merchantName}
+                            </p>
+                            <p className="font-mono text-[11px] text-text-muted">
+                              {toDatePart(row.transactionDate)}
+                            </p>
+                          </div>
+                        </div>
+                        <span className="shrink-0 font-mono text-xs font-bold text-text-primary bg-surface-3 border border-border-2 px-2.5 py-1 rounded-lg">
+                          RM {senToMyr(row.amountSen)}
                         </span>
-                        <span className="font-mono text-sm font-medium text-text-primary shrink-0">
-                          MYR {senToMyr(row.amountSen)}
-                        </span>
-                      </li>
+                      </div>
                     ))}
-                </ul>
+                </div>
+
+                {/* Desktop View (>= sm screens) */}
+                <div className="hidden sm:block">
+                  <ul className="divide-y divide-border-1 border border-border-1 rounded-xl bg-surface-2 overflow-hidden">
+                    {outcome.rows
+                      .slice((previewPage - 1) * PREVIEW_PAGE_SIZE, previewPage * PREVIEW_PAGE_SIZE)
+                      .map((row, i) => (
+                        <li
+                          key={`${row.merchantName}-${row.transactionDate}-${i}`}
+                          className="flex items-center justify-between gap-3 px-5 py-3 hover:bg-surface-3/50 transition-colors"
+                        >
+                          <span className="flex items-center gap-3 min-w-0">
+                            <BrandLogo merchantName={row.merchantName} size={24} />
+                            <span className="font-mono text-xs text-text-faint w-24 shrink-0">
+                              {toDatePart(row.transactionDate)}
+                            </span>
+                            <span className="text-sm font-medium text-text-primary truncate">
+                              {row.merchantName}
+                            </span>
+                          </span>
+                          <span className="font-mono text-sm font-medium text-text-primary shrink-0">
+                            MYR {senToMyr(row.amountSen)}
+                          </span>
+                        </li>
+                      ))}
+                  </ul>
+                </div>
 
                 <Pagination
                   currentPage={previewPage}

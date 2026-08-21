@@ -170,10 +170,12 @@ export function parseFlexibleDate(
     }
   }
 
-  // 8. Standard ISO timestamp fallback
-  const parsed = Date.parse(trimmed);
-  if (!Number.isNaN(parsed)) {
-    return new Date(parsed).toISOString();
+  // 8. Standard ISO timestamp fallback (strict format: 2026-08-20 or 2026-08-20T...)
+  if (/^\d{4}-\d{2}-\d{2}(?:[T\s]\d{2}:\d{2}(?::\d{2})?(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?$/i.test(trimmed)) {
+    const parsed = Date.parse(trimmed);
+    if (!Number.isNaN(parsed)) {
+      return new Date(parsed).toISOString();
+    }
   }
 
   return null;

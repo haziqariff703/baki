@@ -19,6 +19,41 @@ describe('Receipt OCR Text Parser (§12 / §2.1)', () => {
     expect(row.merchantName.toLowerCase()).toContain('spotify');
   });
 
+  it('parses Maybank MAE / DuitNow mobile screenshot text', () => {
+    const rawText = `
+      DuitNow Transfer
+      Transfer To: OpenAI ChatGPT
+      Reference: Sub 2026
+      Date & Time: 20 Aug 2026 14:30:15
+      Amount: RM 94.90
+      Status: Successful
+    `;
+
+    const result = parseReceiptLines(rawText);
+    expect(result.rows.length).toBeGreaterThanOrEqual(1);
+    const row = result.rows[0];
+    expect(row.transactionDate.slice(0, 10)).toBe('2026-08-20');
+    expect(row.amountSen).toBe(9490);
+    expect(row.merchantName.toLowerCase()).toContain('chatgpt');
+  });
+
+  it('parses CIMB OCTO / DuitNow QR mobile screenshot', () => {
+    const rawText = `
+      CIMB Clicks
+      Recipient: Anytime Fitness Malaysia
+      Tarikh: 18/08/2026
+      Jumlah: RM 149.00
+      Status: Berjaya
+    `;
+
+    const result = parseReceiptLines(rawText);
+    expect(result.rows.length).toBeGreaterThanOrEqual(1);
+    const row = result.rows[0];
+    expect(row.transactionDate.slice(0, 10)).toBe('2026-08-18');
+    expect(row.amountSen).toBe(14900);
+    expect(row.merchantName.toLowerCase()).toContain('anytime fitness');
+  });
+
   it('parses DD/MM/YYYY dates and RM prefixes correctly', () => {
     const rawText = `
       Netflix International B.V.
@@ -39,3 +74,4 @@ describe('Receipt OCR Text Parser (§12 / §2.1)', () => {
     expect(parseReceiptLines('Just random text with no amount or date').rows.length).toBe(0);
   });
 });
+
