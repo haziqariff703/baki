@@ -14,7 +14,6 @@ import {
   Check,
   Loader2,
   Building2,
-  Send,
   Save,
   AlertCircle,
 } from 'lucide-react';
@@ -77,42 +76,7 @@ export function AccountProfileSettings({ initialUser, initialProfile }: AccountP
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'idle' | 'error'>('saved');
   const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [testEmailStatus, setTestEmailStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
-  const [testEmailFeedback, setTestEmailFeedback] = useState<string | null>(null);
   const isFirstRender = useRef(true);
-
-  async function handleSendTestEmail() {
-    if (!profile.email) return;
-    setTestEmailStatus('sending');
-    setTestEmailFeedback(null);
-    try {
-      const res = await fetch('/api/notifications/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ testEmail: profile.email, forceTest: true }),
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setTestEmailStatus('sent');
-        setTestEmailFeedback(
-          t('testEmailSent', { recipient: data.recipient ?? profile.email }) +
-            (data.mocked ? ' (Simulated)' : ''),
-        );
-      } else {
-        setTestEmailStatus('error');
-        setTestEmailFeedback(
-          t('testEmailFailed', { error: data.error || 'Unknown error' }),
-        );
-      }
-    } catch (err) {
-      setTestEmailStatus('error');
-      setTestEmailFeedback(
-        t('testEmailFailed', {
-          error: err instanceof Error ? err.message : 'Network error',
-        }),
-      );
-    }
-  }
 
   // Derive University & Domain matching dynamically from universityDomain or current email
   const universityInfo = useMemo(() => {
@@ -706,52 +670,7 @@ export function AccountProfileSettings({ initialUser, initialProfile }: AccountP
             </div>
           </div>
 
-          {/* Email Notifications (Resend Adapter) */}
-          <div className="space-y-3 pt-4 pb-4">
-            <div className="flex items-center justify-between gap-2 flex-wrap">
-              <div>
-                <div className="flex items-center gap-2">
-                  <Mail className="w-4 h-4 text-accent" aria-hidden="true" />
-                  <span className="text-xs font-semibold text-text-primary">
-                    {t('emailReminderTitle')}
-                  </span>
-                </div>
-                <p className="text-xs text-text-muted mt-0.5">{t('emailReminderDesc')}</p>
-              </div>
 
-              <button
-                type="button"
-                onClick={handleSendTestEmail}
-                disabled={testEmailStatus === 'sending' || !profile.email}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-surface-2 hover:bg-surface-3 border border-border-2 text-text-primary transition-all disabled:opacity-50 cursor-pointer active:scale-95"
-              >
-                {testEmailStatus === 'sending' ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin text-accent" aria-hidden="true" />
-                    <span>{t('testEmailSending')}</span>
-                  </>
-                ) : (
-                  <>
-                    <Send className="w-3.5 h-3.5 text-accent" aria-hidden="true" />
-                    <span>{t('testEmailCta')}</span>
-                  </>
-                )}
-              </button>
-            </div>
-
-            {testEmailFeedback && (
-              <div
-                className={cn(
-                  'px-3 py-2 rounded-lg text-xs font-mono border',
-                  testEmailStatus === 'sent'
-                    ? 'bg-status-emerald-surface text-status-emerald-text border-status-emerald-border'
-                    : 'bg-status-rose-surface text-status-rose-text border-status-rose-border'
-                )}
-              >
-                {testEmailFeedback}
-              </div>
-            )}
-          </div>
 
           {/* Default Ledger View Mode */}
           <div className="space-y-2.5 pt-4 pb-4">
