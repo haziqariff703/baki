@@ -1,9 +1,26 @@
+import type {Metadata} from 'next';
 import {NextIntlClientProvider} from 'next-intl';
 import {getMessages} from 'next-intl/server';
 import {notFound} from 'next/navigation';
 import {Instrument_Sans, IBM_Plex_Mono, Syne} from 'next/font/google';
 import {routing} from '@/i18n/routing';
 import '../globals.css';
+
+export const metadata: Metadata = {
+  title: 'Baki - Subscription & Cash Flow Management',
+  description: 'AI-assisted subscription and personal cash-flow management system for Malaysian students and young adults.',
+  icons: {
+    icon: [
+      { url: '/favicon.ico' },
+      { url: '/favicon-16x16.png', sizes: '16x16', type: 'image/png' },
+      { url: '/favicon-32x32.png', sizes: '32x32', type: 'image/png' },
+    ],
+    apple: [
+      { url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
+    ],
+  },
+  manifest: '/site.webmanifest',
+};
 
 const instrumentSans = Instrument_Sans({
   subsets: ['latin'],
