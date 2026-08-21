@@ -60,12 +60,13 @@ async function parseFile(
   const result = await parsePdfText(bytes, password);
   const passwordError = result.errors.find(
     (e) =>
+      e.error === 'INVALID_PASSWORD' ||
+      e.error === 'PASSWORD_REQUIRED' ||
       e.error.toLowerCase().includes('password') ||
-      e.error.toLowerCase().includes('ic number') ||
       e.error.toLowerCase().includes('protected'),
   );
   if (passwordError) {
-    if (password) {
+    if (passwordError.error === 'INVALID_PASSWORD' || (password && password.trim().length > 0)) {
       throw new Error('INVALID_PASSWORD');
     } else {
       throw new Error('PASSWORD_REQUIRED');

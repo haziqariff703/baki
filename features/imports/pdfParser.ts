@@ -174,9 +174,16 @@ export async function parsePdfText(
     doc = await loadingTask.promise;
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message : String(err);
+    const errName = (err as { name?: string })?.name;
     const isPassword =
-      (err as { name?: string })?.name === 'PasswordException' ||
-      errMsg.toLowerCase().includes('password');
+      errName === 'PasswordException' ||
+      errMsg.toLowerCase().includes('password') ||
+      errMsg.toLowerCase().includes('decrypt');
+
+    const isIncorrect =
+      (err as { code?: number })?.code === 2 ||
+      errMsg.toLowerCase().includes('incorrect') ||
+      (isPassword && typeof password === 'string' && password.trim().length > 0);
 
     return {
       rows: [],
@@ -184,7 +191,9 @@ export async function parsePdfText(
         {
           page: 0,
           error: isPassword
-            ? 'This PDF statement is password-protected (e.g. requires IC number). Please unlock the PDF or enter password.'
+            ? isIncorrect
+              ? 'INVALID_PASSWORD'
+              : 'PASSWORD_REQUIRED'
             : 'Could not read this PDF file',
         },
       ],

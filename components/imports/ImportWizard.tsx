@@ -467,23 +467,29 @@ export function ImportWizard() {
               </div>
             </div>
 
-            <p className="text-xs text-text-muted leading-relaxed">
-              Malaysian bank statements (Maybank, CIMB, RHB, etc.) are encrypted by default. Enter your <strong>IC Number (NRIC)</strong> or statement password to unlock:
-            </p>
+            <div className="text-xs text-text-muted leading-relaxed space-y-1.5 bg-surface-2 p-3 rounded-xl border border-border-2">
+              <p className="font-semibold text-text-secondary">Password Formats by Bank:</p>
+              <ul className="space-y-1 text-[11px] list-disc list-inside">
+                <li><strong className="text-text-primary">Maybank / Bank Islam / RHB / HLB / Public Bank:</strong> 12-digit IC number (e.g. <code className="font-mono text-accent">010203101234</code>)</li>
+                <li><strong className="text-text-primary">CIMB Bank:</strong> First 4 letters of Name + Birth Date DDMM (e.g. <code className="font-mono text-accent">HAZI1508</code>)</li>
+              </ul>
+            </div>
 
             <form onSubmit={handleUnlockPdf} className="space-y-4">
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-text-secondary">
-                  Statement Password / NRIC (12 digits)
+                  Statement Password / NRIC / CIMB Code
                 </label>
                 <div className="relative">
                   <input
                     type={showPassword ? 'text' : 'password'}
-                    inputMode="numeric"
+                    autoCapitalize="characters"
                     autoComplete="off"
+                    autoCorrect="off"
+                    spellCheck="false"
                     value={pdfPassword}
                     onChange={(e) => setPdfPassword(e.target.value)}
-                    placeholder="e.g. 010203101234 (IC without dashes)"
+                    placeholder="e.g. 010203101234 or HAZI1508"
                     className="w-full px-3.5 py-3 pr-10 text-xs font-mono bg-surface-2 border border-border-2 rounded-xl text-text-primary focus:outline-none focus:border-accent min-h-[44px]"
                     autoFocus
                   />
@@ -510,7 +516,7 @@ export function ImportWizard() {
                 <div>
                   <span className="font-semibold text-status-emerald-text">We didn&apos;t keep your password</span>
                   <p className="text-[11px] text-text-muted mt-0.5">
-                    Decryption runs locally in memory. Your password and raw files are never permanently saved or shared.
+                    Decryption runs in isolated memory. Your password and statements are never permanently saved or shared.
                   </p>
                 </div>
               </div>
