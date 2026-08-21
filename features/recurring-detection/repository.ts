@@ -209,16 +209,22 @@ export class SupabaseRecurringCandidateRepository
   ): Promise<readonly RecurringCandidate[]> {
     if (candidates.length === 0) return [];
 
-    // Filter out candidates that already exist as pending for this user to avoid duplicates
-    const { data: existing } = await this.client
+    // Filter out candidates that already exist for this user in ANY state (pending, confirmed, or rejected)
+    // or already exist as an active subscription to strictly prevent resurrecting rejected candidates (§2.2).
+    const { data: existingCandidates } = await this.client
       .from('recurring_candidates')
-      .select('merchant_name, status')
-      .eq('user_id', userId)
-      .eq('status', 'pending');
+      .select('merchant_name')
+      .eq('user_id', userId);
 
-    const existingNames = new Set(
-      (existing ?? []).map((e: { merchant_name: string }) => e.merchant_name.toLowerCase()),
-    );
+    const { data: existingSubs } = await this.client
+      .from('subscriptions')
+      .select('merchant_name')
+      .eq('user_id', userId);
+
+    const existingNames = new Set([
+      ...(existingCandidates ?? []).map((e: { merchant_name: string }) => e.merchant_name.toLowerCase()),
+      ...(existingSubs ?? []).map((s: { merchant_name: string }) => s.merchant_name.toLowerCase()),
+    ]);
 
     const now = new Date().toISOString();
     const rows = candidates

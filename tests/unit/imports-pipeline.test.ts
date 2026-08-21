@@ -118,13 +118,15 @@ describe('runImport orchestration (§12 parse→validate→persist→purge)', ()
       return persisted;
     });
     const list = vi.fn(async () => persisted);
+    const deleteTx = vi.fn(async (_u: string, _id: string) => {});
+    const deleteAll = vi.fn(async (_u: string) => {});
     const create = vi.fn(async (_u: string, input: ImportInsert) => {
       const rec = sampleImportRecord({ ...input });
       created.push(rec);
       return rec;
     });
     const findByKey = vi.fn(async (_u: string, _k: string) => null as ImportRecord | null);
-    const transactionRepo = { insertMany, list };
+    const transactionRepo = { insertMany, list, delete: deleteTx, deleteAll };
     const importRepo = { create, findByKey, markPurged };
     return { created, persisted, upload, remove, markPurged, transactionRepo, importRepo };
   }

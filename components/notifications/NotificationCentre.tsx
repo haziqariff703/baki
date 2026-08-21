@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useTranslations } from 'next-intl';
 import {
   AlarmClock,
@@ -11,6 +11,8 @@ import {
   PauseCircle,
   Check,
   CheckCheck,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import {
   computeNext30DayTotalSen,
@@ -55,9 +57,24 @@ const BADGE_CLASS = {
 
 const NOTIFICATION_PREF_KEY = 'baki_notification_timings_v1';
 const NOTIFICATION_READ_KEY = 'baki_read_notifications_v1';
+const PAGE_SIZE = 5;
 
 export function NotificationCentre({ renewals, fromDate }: NotificationCentreProps) {
   const t = useTranslations('Notifications');
+  const [page, setPage] = useState(1);
+
+  // Safe translation helper
+  const safeT = (key: string, fallback: string, params?: Record<string, string | number>): string => {
+    try {
+      if (typeof (t as any).has === 'function' && !(t as any).has(key)) {
+        return fallback;
+      }
+      const val = t(key as any, params);
+      return val && !val.startsWith('Notifications.') ? val : fallback;
+    } catch {
+      return fallback;
+    }
+  };
 
   const [enabled, setEnabled] = useState<Record<TimingKey, boolean>>(() => {
     if (typeof window !== 'undefined') {
@@ -148,6 +165,17 @@ export function NotificationCentre({ renewals, fromDate }: NotificationCentrePro
     }),
   );
 
+  const totalPages = Math.max(1, Math.ceil(upcoming.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+
+  const paginatedUpcoming = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return upcoming.slice(start, start + PAGE_SIZE);
+  }, [upcoming, currentPage]);
+
+  const startIndex = upcoming.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1;
+  const endIndex = Math.min(currentPage * PAGE_SIZE, upcoming.length);
+
   const upcomingIds = upcoming.map((r) => `${r.id}-${r.nextChargeDate}`);
   const hasUnread = upcomingIds.some((id) => !readIds.has(id));
 
@@ -162,19 +190,19 @@ export function NotificationCentre({ renewals, fromDate }: NotificationCentrePro
               id="preferences-heading"
               className="text-xs font-mono uppercase tracking-wider text-text-faint"
             >
-              {t('preferencesHeading')}
+              {safeT('preferencesHeading', 'Reminder timing')}
             </h2>
-            <p className="text-xs text-text-muted">{t('preferencesSub')}</p>
+            <p className="text-xs text-text-muted">{safeT('preferencesSub', 'Each reminder fires at most once per renewal.')}</p>
           </div>
           <ul className="divide-y divide-border-1 border border-border-1 rounded-xl bg-surface-1">
             {TIMINGS.map(({ key, labelKey }) => (
               <li key={key} className="px-5 py-4 flex items-center justify-between gap-4">
-                <p className="text-sm font-medium text-text-primary">{t(labelKey)}</p>
+                <p className="text-sm font-medium text-text-primary">{safeT(labelKey, key)}</p>
                 <button
                   type="button"
                   role="switch"
                   aria-checked={enabled[key]}
-                  aria-label={t(labelKey)}
+                  aria-label={safeT(labelKey, key)}
                   onClick={() => toggleTiming(key)}
                   className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface-0 ${
                     enabled[key]
@@ -194,11 +222,11 @@ export function NotificationCentre({ renewals, fromDate }: NotificationCentrePro
           <div className="space-y-1.5">
             <p className="text-xs text-text-faint flex items-start gap-1.5">
               <Smartphone className="w-3.5 h-3.5 shrink-0 mt-0.5" aria-hidden="true" />
-              {t('inAppNote')}
+              {safeT('inAppNote', 'Reminders are in-app only for now — email is coming later.')}
             </p>
             <p className="text-xs text-text-faint flex items-start gap-1.5">
               <PauseCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" aria-hidden="true" />
-              {t('pausedNote')}
+              {safeT('pausedNote', 'Paused, cancelled, or archived subscriptions never generate reminders.')}
             </p>
           </div>
         </section>
@@ -210,9 +238,9 @@ export function NotificationCentre({ renewals, fromDate }: NotificationCentrePro
               id="timeline-heading"
               className="text-xs font-mono uppercase tracking-wider text-text-faint"
             >
-              {t('timelineHeading')}
+              {safeT('timelineHeading', 'Reminder timeline')}
             </h2>
-            <p className="text-xs text-text-muted">{t('timelineSub')}</p>
+            <p className="text-xs text-text-muted">{safeT('timelineSub', 'When each reminder fires relative to the charge date')}</p>
           </div>
           <ReminderTimeline
             renewals={renewals}
@@ -225,7 +253,7 @@ export function NotificationCentre({ renewals, fromDate }: NotificationCentrePro
             return d === null || d < 0 || d > 7;
           }) && (
             <p className="bg-surface-1 border border-border-1 rounded-xl px-5 py-4 text-sm text-text-muted">
-              {t('timelineEmpty')}
+              {safeT('timelineEmpty', 'No renewals due in the next 7 days.')}
             </p>
           )}
         </section>
@@ -240,9 +268,9 @@ export function NotificationCentre({ renewals, fromDate }: NotificationCentrePro
                 id="upcoming-heading"
                 className="text-xs font-mono uppercase tracking-wider text-text-faint"
               >
-                {t('upcomingHeading')}
+                {safeT('upcomingHeading', 'Upcoming renewals')}
               </h2>
-              <p className="text-xs text-text-muted">{t('upcomingSub')}</p>
+              <p className="text-xs text-text-muted">{safeT('upcomingSub', 'Charges due in the next 30 days.')}</p>
             </div>
 
             {hasUnread && (
@@ -252,7 +280,7 @@ export function NotificationCentre({ renewals, fromDate }: NotificationCentrePro
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border-2 bg-surface-2 hover:bg-surface-3 text-xs font-medium text-text-secondary hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
               >
                 <CheckCheck className="w-3.5 h-3.5 text-accent" aria-hidden="true" />
-                <span>{t('markAllRead')}</span>
+                <span>{safeT('markAllRead', 'Mark all as read')}</span>
               </button>
             )}
           </div>
@@ -260,92 +288,137 @@ export function NotificationCentre({ renewals, fromDate }: NotificationCentrePro
           {/* Summary row — Ledger Rule: label left, single amber tick on the figure */}
           <div className="bg-surface-1 border border-border-1 rounded-xl px-5 py-4">
             <div className="flex items-baseline justify-between gap-4">
-              <span className="text-sm text-text-secondary">{t('next7Days')}</span>
+              <span className="text-sm text-text-secondary">{safeT('next7Days', 'Due in the next 30 days')}</span>
               <span
                 className="font-mono text-xl font-medium text-text-primary border-l-2 border-accent pl-3"
-                aria-label={t('amountLabel', { amount: senToMyr(total) })}
+                aria-label={safeT('amountLabel', `Amount ${senToMyr(total)} ringgit`, { amount: senToMyr(total) })}
               >
                 MYR {senToMyr(total)}
               </span>
             </div>
             <p className="text-xs text-text-faint mt-1">
-              {t('acrossRenewals', { count })}
+              {safeT('acrossRenewals', `${count} renewals`, { count })}
             </p>
           </div>
 
-          <ul className="divide-y divide-border-1 border border-border-1 rounded-xl bg-surface-1">
-            {upcoming.length === 0 && (
-              <li className="px-5 py-6 text-center text-sm text-text-muted">{t('empty')}</li>
-            )}
-            {upcoming.map((r) => {
-              const notifId = `${r.id}-${r.nextChargeDate}`;
-              const isRead = readIds.has(notifId);
-              const d = daysUntil(r.nextChargeDate, fromDate);
-              const badge = reminderBadge(d);
-              const Icon = BADGE_ICON[badge.kind];
-              const dueLabel =
-                d === null
-                  ? ''
-                  : d === 0
-                    ? t('dueToday')
-                    : d === 1
-                      ? t('dueTomorrow')
-                      : t('dueIn', { days: d });
-              return (
-                <li
-                  key={notifId}
-                  className={`px-5 py-3.5 flex items-center justify-between gap-4 transition-colors ${
-                    isRead ? 'opacity-65 bg-surface-1/50' : 'bg-surface-1'
-                  }`}
-                >
-                  <div className="flex items-center gap-3 min-w-0">
+          {/* List + Minimalist Pagination Wrapper */}
+          <div className="border border-border-1 rounded-xl bg-surface-1 overflow-hidden">
+            <ul className="divide-y divide-border-1">
+              {upcoming.length === 0 && (
+                <li className="px-5 py-6 text-center text-sm text-text-muted">{safeT('empty', 'No renewals due in the next 30 days.')}</li>
+              )}
+              {paginatedUpcoming.map((r) => {
+                const notifId = `${r.id}-${r.nextChargeDate}`;
+                const isRead = readIds.has(notifId);
+                const d = daysUntil(r.nextChargeDate, fromDate);
+                const badge = reminderBadge(d);
+                const Icon = BADGE_ICON[badge.kind];
+                const dueLabel =
+                  d === null
+                    ? ''
+                    : d === 0
+                      ? safeT('dueToday', 'Due today')
+                      : d === 1
+                        ? safeT('dueTomorrow', 'Due tomorrow')
+                        : safeT('dueIn', `Due in ${d} days`, { days: d });
+                return (
+                  <li
+                    key={notifId}
+                    className={`px-5 py-3.5 flex items-center justify-between gap-4 transition-colors ${
+                      isRead ? 'opacity-65 bg-surface-1/50' : 'bg-surface-1 hover:bg-surface-2/30'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <button
+                        type="button"
+                        onClick={() => toggleRead(notifId)}
+                        title={isRead ? safeT('markUnread', 'Mark as unread') : safeT('markRead', 'Mark as read')}
+                        aria-label={isRead ? safeT('markUnread', 'Mark as unread') : safeT('markRead', 'Mark as read')}
+                        className={`w-6 h-6 rounded-lg border flex items-center justify-center shrink-0 transition-colors ${
+                          isRead
+                            ? 'bg-status-emerald-surface text-status-emerald-text border-status-emerald-border hover:opacity-80'
+                            : 'bg-surface-2 text-text-faint border-border-2 hover:border-accent hover:text-accent'
+                        }`}
+                      >
+                        <Check className="w-3.5 h-3.5" aria-hidden="true" />
+                      </button>
+
+                      <BrandLogo merchantName={r.merchantName} size={20} />
+                      <span className="font-mono text-xs text-text-faint w-20 shrink-0">
+                        {toDatePart(r.nextChargeDate)}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-sm text-text-primary truncate font-medium">{r.merchantName}</p>
+                        <p className="text-xs text-text-muted">{dueLabel}</p>
+                      </div>
+
+                      {!isRead && (
+                        <span
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-xs font-medium shrink-0 ${BADGE_CLASS[badge.kind]}`}
+                        >
+                          <Icon className="w-3 h-3" aria-hidden="true" />
+                          {safeT(`badge.${badge.kind}`, badge.kind)}
+                        </span>
+                      )}
+                      {isRead && (
+                        <span className="text-[11px] font-mono text-status-emerald-text/80 px-1.5 py-0.5 rounded bg-status-emerald-surface/40 border border-status-emerald-border/40 shrink-0">
+                          {safeT('acknowledged', 'Acknowledged')}
+                        </span>
+                      )}
+                    </div>
+                    <span
+                      className="font-mono text-sm text-text-primary shrink-0 font-medium"
+                      aria-label={safeT('amountLabel', `Amount ${senToMyr(r.amountSen)} ringgit`, { amount: senToMyr(r.amountSen) })}
+                    >
+                      MYR {senToMyr(r.amountSen)}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+
+            {/* Minimalist Micro-Stepper Pagination Footer */}
+            {totalPages > 1 && (
+              <div className="px-5 py-3 border-t border-border-1 bg-surface-1 flex items-center justify-between text-xs font-mono text-text-muted">
+                <span>
+                  {safeT('paginationRange', `${startIndex}–${endIndex} of ${upcoming.length}`, {
+                    start: startIndex,
+                    end: endIndex,
+                    total: upcoming.length,
+                  })}
+                </span>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-text-faint">
+                    {safeT('paginationPage', `${currentPage}/${totalPages}`, {
+                      current: currentPage,
+                      total: totalPages,
+                    })}
+                  </span>
+                  <div className="flex items-center gap-1">
                     <button
                       type="button"
-                      onClick={() => toggleRead(notifId)}
-                      title={isRead ? t('markUnread') : t('markRead')}
-                      aria-label={isRead ? t('markUnread') : t('markRead')}
-                      className={`w-6 h-6 rounded-lg border flex items-center justify-center shrink-0 transition-colors ${
-                        isRead
-                          ? 'bg-status-emerald-surface text-status-emerald-text border-status-emerald-border hover:opacity-80'
-                          : 'bg-surface-2 text-text-faint border-border-2 hover:border-accent hover:text-accent'
-                      }`}
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                      aria-label={safeT('paginationPrev', 'Previous')}
+                      className="w-6 h-6 flex items-center justify-center rounded border border-border-1 bg-surface-2/60 text-text-secondary hover:bg-surface-3 disabled:opacity-40 disabled:pointer-events-none transition-colors"
                     >
-                      <Check className="w-3.5 h-3.5" aria-hidden="true" />
+                      <ChevronLeft className="w-3.5 h-3.5" />
                     </button>
-
-                    <BrandLogo merchantName={r.merchantName} size={20} />
-                    <span className="font-mono text-xs text-text-faint w-20 shrink-0">
-                      {toDatePart(r.nextChargeDate)}
-                    </span>
-                    <div className="min-w-0">
-                      <p className="text-sm text-text-primary truncate">{r.merchantName}</p>
-                      <p className="text-xs text-text-muted">{dueLabel}</p>
-                    </div>
-
-                    {!isRead && (
-                      <span
-                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-xs font-medium shrink-0 ${BADGE_CLASS[badge.kind]}`}
-                      >
-                        <Icon className="w-3 h-3" aria-hidden="true" />
-                        {t(`badge.${badge.kind}`)}
-                      </span>
-                    )}
-                    {isRead && (
-                      <span className="text-[11px] font-mono text-status-emerald-text/80 px-1.5 py-0.5 rounded bg-status-emerald-surface/40 border border-status-emerald-border/40 shrink-0">
-                        {t('acknowledged')}
-                      </span>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={currentPage === totalPages}
+                      aria-label={safeT('paginationNext', 'Next')}
+                      className="w-6 h-6 flex items-center justify-center rounded border border-border-1 bg-surface-2/60 text-text-secondary hover:bg-surface-3 disabled:opacity-40 disabled:pointer-events-none transition-colors"
+                    >
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
                   </div>
-                  <span
-                    className="font-mono text-sm text-text-primary shrink-0"
-                    aria-label={t('amountLabel', { amount: senToMyr(r.amountSen) })}
-                  >
-                    MYR {senToMyr(r.amountSen)}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
+                </div>
+              </div>
+            )}
+          </div>
         </section>
       </div>
     </div>

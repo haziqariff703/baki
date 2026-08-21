@@ -164,6 +164,7 @@ describe('Baki End-to-End User Journey (§15 Complete MVP Pipeline)', () => {
         amountSen: 1590,
         cycle: 'monthly' as const,
         nextChargeDate: '2026-08-28T00:00:00.000Z',
+        reminderOffsets: [],
       },
       {
         id: 'sub-celcom',
@@ -171,6 +172,7 @@ describe('Baki End-to-End User Journey (§15 Complete MVP Pipeline)', () => {
         amountSen: 6000,
         cycle: 'monthly' as const,
         nextChargeDate: '2026-09-05T00:00:00.000Z',
+        reminderOffsets: [],
       },
       {
         id: 'sub-netflix',
@@ -178,6 +180,7 @@ describe('Baki End-to-End User Journey (§15 Complete MVP Pipeline)', () => {
         amountSen: 4500,
         cycle: 'monthly' as const,
         nextChargeDate: '2026-09-03T00:00:00.000Z',
+        reminderOffsets: [],
       },
     ];
 
@@ -236,7 +239,7 @@ describe('Baki End-to-End User Journey (§15 Complete MVP Pipeline)', () => {
         {
           purpose: 'analytics',
           status: 'granted',
-          version: '1.0',
+          consentVersion: 'consent_v1',
           grantedAt: '2026-08-01T00:00:00.000Z',
           withdrawnAt: null,
         },
@@ -253,6 +256,8 @@ describe('Baki End-to-End User Journey (§15 Complete MVP Pipeline)', () => {
           affordability: 5,
           uniqueness: 4,
           satisfaction: 5,
+          createdAt: '2026-08-01T00:00:00.000Z',
+          updatedAt: '2026-08-01T00:00:00.000Z',
         },
       ],
       candidates: [rawCandidateObj],

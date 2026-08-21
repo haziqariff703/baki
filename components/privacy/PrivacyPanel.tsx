@@ -20,6 +20,8 @@ import {
   FileSpreadsheet,
   CheckCircle2,
   Lock,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import {
   CONSENT_PURPOSES,
@@ -60,9 +62,9 @@ export function PrivacyPanel({ initialConsents, initialAuditEvents }: PrivacyPan
   const [updatingPurpose, setUpdatingPurpose] = useState<ConsentPurpose | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Audit trail pagination (10 per page)
+  // Audit trail pagination (5 per page, matching dashboard)
   const [auditPage, setAuditPage] = useState<number>(1);
-  const AUDIT_PAGE_SIZE = 10;
+  const AUDIT_PAGE_SIZE = 5;
 
   // Sync state if server props change
   useEffect(() => {
@@ -519,36 +521,37 @@ export function PrivacyPanel({ initialConsents, initialAuditEvents }: PrivacyPan
                 ))}
               </ul>
 
-              {/* 10-Item Limit Pagination Bar */}
-              {totalAuditEvents > AUDIT_PAGE_SIZE && (
-                <div className="flex items-center justify-between p-3 border-t border-border-1 bg-surface-2/30 text-xs text-text-muted">
-                  <span className="text-[11px]">
-                    {t('pagination.showingEvents', {
-                      start: startAuditIndex + 1,
-                      end: endAuditIndex,
-                      total: totalAuditEvents,
-                    })}
+              {/* Minimalist Micro-Stepper Pagination Footer (Matching Dashboard) */}
+              {totalAuditPages > 1 && (
+                <div className="px-5 py-3 border-t border-border-1 bg-surface-1 flex items-center justify-between text-xs font-mono text-text-muted">
+                  <span>
+                    {startAuditIndex + 1}–{endAuditIndex} of {totalAuditEvents}
                   </span>
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      disabled={currentAuditPage <= 1}
-                      onClick={() => setAuditPage((p) => Math.max(1, p - 1))}
-                      className="px-2.5 py-1 rounded-lg border border-border-2 bg-surface-1 text-text-secondary hover:text-text-primary disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-xs font-medium cursor-pointer"
-                    >
-                      {t('pagination.prev')}
-                    </button>
-                    <span className="font-mono text-xs text-text-faint px-1">
-                      {t('pagination.pageOf', { current: currentAuditPage, total: totalAuditPages })}
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-text-faint">
+                      {currentAuditPage}/{totalAuditPages}
                     </span>
-                    <button
-                      type="button"
-                      disabled={currentAuditPage >= totalAuditPages}
-                      onClick={() => setAuditPage((p) => Math.min(totalAuditPages, p + 1))}
-                      className="px-2.5 py-1 rounded-lg border border-border-2 bg-surface-1 text-text-secondary hover:text-text-primary disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-xs font-medium cursor-pointer"
-                    >
-                      {t('pagination.next')}
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setAuditPage((p) => Math.max(1, p - 1))}
+                        disabled={currentAuditPage === 1}
+                        aria-label={t('pagination.prev')}
+                        className="w-6 h-6 flex items-center justify-center rounded border border-border-1 bg-surface-2/60 text-text-secondary hover:bg-surface-3 disabled:opacity-40 disabled:pointer-events-none transition-colors cursor-pointer"
+                      >
+                        <ChevronLeft className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAuditPage((p) => Math.min(totalAuditPages, p + 1))}
+                        disabled={currentAuditPage === totalAuditPages}
+                        aria-label={t('pagination.next')}
+                        className="w-6 h-6 flex items-center justify-center rounded border border-border-1 bg-surface-2/60 text-text-secondary hover:bg-surface-3 disabled:opacity-40 disabled:pointer-events-none transition-colors cursor-pointer"
+                      >
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}

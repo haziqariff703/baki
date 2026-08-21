@@ -20,6 +20,8 @@ import {
 import type { MoneyInSen } from '@/lib/money';
 import type { SubscriptionSchema } from '@/lib/validation';
 
+export type { UpcomingRenewal };
+
 /** A subscription paired with its engine-computed score. */
 export interface ScoredSubscription {
   readonly subscription: SubscriptionSchema;
@@ -166,16 +168,17 @@ export interface ForecastRow {
   readonly days: number;
 }
 
-/** Next-30-day renewals as flat rows, soonest first (presentational). */
+/** Renewals within the given window (default 30 days) as flat rows, soonest first. */
 export function renewalForecast(
   renewals: readonly UpcomingRenewal[],
   fromDate: string,
+  windowDays: number = 30,
 ): readonly ForecastRow[] {
   return renewals
     .map((r) => ({ r, days: daysUntil(r.nextChargeDate, fromDate) }))
     .filter(
       (x): x is { r: UpcomingRenewal; days: number } =>
-        x.days !== null && x.days >= 0 && x.days <= 30,
+        x.days !== null && x.days >= 0 && x.days <= windowDays,
     )
     .sort((a, b) => a.days - b.days)
     .map(({ r, days }) => ({

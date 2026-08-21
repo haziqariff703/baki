@@ -13,9 +13,10 @@ import {
 import { AppShell } from '@/components/layout/AppShell';
 import { SubscriptionLedger } from '@/components/subscriptions/SubscriptionLedger';
 import { BrandLogo } from '@/components/subscriptions/BrandLogo';
-import { SpendingDonut, SpendingDonutLegend } from '@/components/dashboard/SpendingDonut';
+import { SpendingDonutCard } from '@/components/dashboard/SpendingDonutCard';
+import { SpendingTrendCard } from '@/components/dashboard/SpendingTrendCard';
+import { RenewalForecastCard } from '@/components/dashboard/RenewalForecastCard';
 import { ScoreDistribution } from '@/components/dashboard/ScoreDistribution';
-import { TrendSparkline, TrendSummary } from '@/components/dashboard/TrendSparkline';
 import { OnboardingChecklist } from '@/components/dashboard/OnboardingChecklist';
 import { CategoryBreakdown } from '@/components/dashboard/CategoryBreakdown';
 import { DailyBurnWidget } from '@/components/cash-flow/DailyBurnWidget';
@@ -25,12 +26,10 @@ import {
   averageScore,
   buildAlerts,
   buildScoredSubscriptions,
-  renewalForecast,
   savingsOpportunities,
   scoreDistribution,
   spendingByCategory,
   spendingByMerchant,
-  spendingTrend,
   type AlertKind,
 } from '@/features/dashboard/analytics';
 import { computeCashFlowSummary } from '@/features/cash-flow';
@@ -129,9 +128,7 @@ export default async function DashboardPage() {
   const spendSlices = spendingByMerchant(scored);
   const categorySlices = spendingByCategory(scored);
   const bands = scoreDistribution(scored);
-  const forecast = renewalForecast(realRenewals, SYNTHETIC_TODAY);
   const savings = savingsOpportunities(scored);
-  const trend = spendingTrend(summary.monthlyCommitmentSen);
   const studentSavings = detectStudentSavings(initialSubscriptions, isStudent);
   const alerts = buildAlerts(
     realRenewals,
@@ -288,38 +285,12 @@ export default async function DashboardPage() {
 
           {/* Trend + Spending + Score distribution */}
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-            <section aria-labelledby="trend-heading" className="bg-surface-1 border border-border-1 rounded-xl p-5 space-y-4">
-              <div>
-                <h2 id="trend-heading" className="text-xs font-mono uppercase tracking-wider text-text-faint">
-                  {t('trendHeading')}
-                </h2>
-                <p className="text-xs text-text-muted mt-0.5">{t('trendSub')}</p>
-              </div>
-              <TrendSummary points={trend} />
-              <TrendSparkline
-                points={trend}
-                ariaLabel={t('trendAria', {
-                  amount: senToMyr(summary.monthlyCommitmentSen),
-                })}
-              />
-            </section>
+            <SpendingTrendCard currentMonthlySen={summary.monthlyCommitmentSen} />
 
-            <section aria-labelledby="spending-heading" className="bg-surface-1 border border-border-1 rounded-xl p-5 space-y-4">
-              <div>
-                <h2 id="spending-heading" className="text-xs font-mono uppercase tracking-wider text-text-faint">
-                  {t('spendingHeading')}
-                </h2>
-                <p className="text-xs text-text-muted mt-0.5">{t('spendingSub')}</p>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
-                <SpendingDonut
-                  slices={spendSlices}
-                  centerLabel={t('spendingCenter')}
-                  centerValueSen={summary.monthlyCommitmentSen}
-                />
-                <SpendingDonutLegend slices={spendSlices} />
-              </div>
-            </section>
+            <SpendingDonutCard
+              slices={spendSlices}
+              totalMonthlySen={summary.monthlyCommitmentSen}
+            />
 
             <section aria-labelledby="scoredist-heading" className="bg-surface-1 border border-border-1 rounded-xl p-5 space-y-4">
               <div>
@@ -340,41 +311,10 @@ export default async function DashboardPage() {
 
           {/* Forecast + Review queue + Savings */}
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-            <section aria-labelledby="forecast-heading" className="bg-surface-1 border border-border-1 rounded-xl p-5 space-y-3">
-              <div>
-                <h2 id="forecast-heading" className="text-xs font-mono uppercase tracking-wider text-text-faint">
-                  {t('forecastHeading')}
-                </h2>
-                <p className="text-xs text-text-muted mt-0.5">{t('forecastSub')}</p>
-              </div>
-              <ul className="divide-y divide-border-1">
-                {forecast.map((row) => (
-                  <li key={row.id} className="flex items-baseline justify-between gap-3 py-2">
-                    <span className="flex items-center gap-2 min-w-0">
-                      <BrandLogo merchantName={row.merchantName} size={20} />
-                      <span className="font-mono text-xs text-text-faint w-20 shrink-0">
-                        {toDatePart(row.nextChargeDate)}
-                      </span>
-                      <span className="text-sm text-text-secondary truncate">
-                        {row.merchantName}
-                      </span>
-                    </span>
-                    <span className="flex items-baseline gap-2 shrink-0">
-                      <span className="font-mono text-xs text-text-faint">
-                        {row.days === 0
-                          ? t('forecastToday')
-                          : row.days === 1
-                            ? t('forecastTomorrow')
-                            : t('forecastIn', { days: row.days })}
-                      </span>
-                      <span className="font-mono text-xs text-text-primary">
-                        MYR {senToMyr(row.amountSen)}
-                      </span>
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </section>
+            <RenewalForecastCard
+              renewals={realRenewals}
+              fromDate={SYNTHETIC_TODAY}
+            />
 
             <section aria-labelledby="queue-heading" className="bg-surface-1 border border-border-1 rounded-xl p-5 space-y-4">
               <div>

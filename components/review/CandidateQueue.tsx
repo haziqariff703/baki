@@ -73,6 +73,40 @@ const CATEGORIES = [
   'Other',
 ] as const;
 
+const DECISIONS_STORAGE_KEY = 'baki_candidate_decisions_v1';
+
+function getStoredDecisions(): Record<string, 'confirm' | 'reject'> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem(DECISIONS_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveStoredDecision(id: string, action: 'confirm' | 'reject') {
+  if (typeof window === 'undefined') return;
+  try {
+    const current = getStoredDecisions();
+    current[id] = action;
+    localStorage.setItem(DECISIONS_STORAGE_KEY, JSON.stringify(current));
+  } catch {
+    // Fallback
+  }
+}
+
+function removeStoredDecision(id: string) {
+  if (typeof window === 'undefined') return;
+  try {
+    const current = getStoredDecisions();
+    delete current[id];
+    localStorage.setItem(DECISIONS_STORAGE_KEY, JSON.stringify(current));
+  } catch {
+    // Fallback
+  }
+}
+
 export function CandidateQueue({ initialCandidates }: QueueProps) {
   const t = useTranslations('Review');
   const [candidates, setCandidates] = useState<readonly RecurringCandidate[]>(initialCandidates);
@@ -104,16 +138,31 @@ export function CandidateQueue({ initialCandidates }: QueueProps) {
 
   const safeSelectedIndex = Math.min(selectedIndex, Math.max(0, sortedPending.length - 1));
 
-  // Keep state in sync if parent server props revalidate or hydrate, and fetch fresh candidates on mount
+  // Keep state in sync if parent server props revalidate or hydrate, applying stored local decisions
   useEffect(() => {
-    setCandidates(initialCandidates);
+    const decisions = getStoredDecisions();
+    const applyDecisions = (list: readonly RecurringCandidate[]) => {
+      const now = new Date().toISOString();
+      return list.map((c) => {
+        const stored = decisions[c.id];
+        if (stored === 'confirm' && c.status.state === 'pending') {
+          return applyConfirmation(c, { action: 'confirm', confirmedAt: now });
+        }
+        if (stored === 'reject' && c.status.state === 'pending') {
+          return applyConfirmation(c, { action: 'reject', rejectedAt: now });
+        }
+        return c;
+      });
+    };
+
+    setCandidates(applyDecisions(initialCandidates));
 
     // Fetch live candidates from database to ensure fresh state after imports
     fetch('/api/recurring-candidates')
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data && Array.isArray(data.candidates)) {
-          setCandidates(data.candidates);
+          setCandidates(applyDecisions(data.candidates));
         }
       })
       .catch(() => {});
@@ -132,6 +181,8 @@ export function CandidateQueue({ initialCandidates }: QueueProps) {
     const now = new Date().toISOString();
     const candidate = candidates.find((c) => c.id === id);
     const prevCandidates = [...candidates];
+
+    saveStoredDecision(id, action);
 
     setCandidates((prev) =>
       prev.map((c) =>
@@ -169,6 +220,7 @@ export function CandidateQueue({ initialCandidates }: QueueProps) {
       });
     } catch {
       // Soft rollback on network failure
+      removeStoredDecision(id);
       setCandidates(prevCandidates);
       globalToast.error('Network error', { description: 'Failed to update candidate state.' });
     }
@@ -176,6 +228,7 @@ export function CandidateQueue({ initialCandidates }: QueueProps) {
 
   function undo(): void {
     if (!toast) return;
+    removeStoredDecision(toast.id);
     setCandidates((prev) =>
       prev.map((c) =>
         c.id === toast.id ? { ...c, status: { state: 'pending' } } : c,

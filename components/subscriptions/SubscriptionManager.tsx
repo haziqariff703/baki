@@ -153,9 +153,10 @@ export function SubscriptionManager({ initialSubscriptions }: SubscriptionManage
 
   function togglePause(id: string) {
     const sub = subscriptions.find((s) => s.id === id);
+    const willBePaused = !pausedIds.has(id);
+
     setPausedIds((prev) => {
       const next = new Set(prev);
-      const isNowPaused = !prev.has(id);
       if (prev.has(id)) {
         next.delete(id);
       } else {
@@ -170,19 +171,18 @@ export function SubscriptionManager({ initialSubscriptions }: SubscriptionManage
       } catch {
         // Fallback
       }
-
-      if (isNowPaused) {
-        toast.info('Subscription paused', {
-          description: `${sub?.merchantName || 'Subscription'} excluded from cash-flow forecast.`,
-        });
-      } else {
-        toast.success('Subscription resumed', {
-          description: `${sub?.merchantName || 'Subscription'} restored to active forecast.`,
-        });
-      }
-
       return next;
     });
+
+    if (willBePaused) {
+      toast.info('Subscription paused', {
+        description: `${sub?.merchantName || 'Subscription'} excluded from cash-flow forecast.`,
+      });
+    } else {
+      toast.success('Subscription resumed', {
+        description: `${sub?.merchantName || 'Subscription'} restored to active forecast.`,
+      });
+    }
   }
 
   // Deterministic scoring per subscription via the engine (§2.1, §2.5).
@@ -258,6 +258,11 @@ export function SubscriptionManager({ initialSubscriptions }: SubscriptionManage
       s.result.score < min.result.score ? s : min,
     ).subscription.id;
   }, [scored]);
+
+  const studentSavingsSummary = useMemo(
+    () => detectStudentSavings(subscriptions, isStudent),
+    [subscriptions, isStudent],
+  );
 
   function openCreate() {
     setEditing(null);
@@ -444,11 +449,6 @@ export function SubscriptionManager({ initialSubscriptions }: SubscriptionManage
 
   const activeCount = scored.filter((s) => !s.isPaused).length;
   const pausedCount = scored.filter((s) => s.isPaused).length;
-
-  const studentSavingsSummary = useMemo(
-    () => detectStudentSavings(subscriptions, isStudent),
-    [subscriptions, isStudent],
-  );
 
   return (
     <div className="space-y-6">

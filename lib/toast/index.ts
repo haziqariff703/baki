@@ -48,7 +48,15 @@ class ToastStore {
 
   private notify() {
     const list = [...this.toasts];
-    this.listeners.forEach((listener) => listener(list));
+    if (typeof queueMicrotask === 'function') {
+      queueMicrotask(() => {
+        this.listeners.forEach((listener) => listener(list));
+      });
+    } else {
+      setTimeout(() => {
+        this.listeners.forEach((listener) => listener(list));
+      }, 0);
+    }
   }
 
   public subscribe(listener: ToastListener): () => void {

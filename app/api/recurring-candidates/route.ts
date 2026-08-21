@@ -10,25 +10,13 @@ import { SupabaseTransactionRepository } from '@/features/transactions';
 
 export const dynamic = 'force-dynamic';
 
-/** List the authenticated user's detected candidates, auto-analyzing transactions if queue is empty. */
+/** List the authenticated user's pending detected candidates (§2.2). */
 export async function GET() {
   try {
     const user = await requireUser();
     const supabase = await createServerSupabase();
     const repo = new SupabaseRecurringCandidateRepository(supabase);
-    let candidates = await repo.list(user.id);
-
-    // If no candidates are found, check if user has transactions and auto-detect
-    if (candidates.length === 0) {
-      const txRepo = new SupabaseTransactionRepository(supabase);
-      const history = await txRepo.list(user.id);
-      if (history.length > 0) {
-        const detected = detectRecurringCadence(history);
-        if (detected.length > 0) {
-          candidates = await repo.insertMany(user.id, detected);
-        }
-      }
-    }
+    const candidates = await repo.list(user.id);
 
     return NextResponse.json({ candidates });
   } catch (error) {
