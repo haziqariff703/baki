@@ -406,9 +406,9 @@ export function ImportWizard() {
               <div className="flex items-start gap-2.5 p-3.5 rounded-xl bg-status-emerald-surface/60 border border-status-emerald-border/70 text-xs text-text-secondary leading-relaxed">
                 <ShieldCheck className="w-4 h-4 text-status-emerald-text shrink-0 mt-0.5" />
                 <div>
-                  <span className="font-semibold text-status-emerald-text">We didn't keep your password</span>
+                  <span className="font-semibold text-status-emerald-text">We didn&apos;t keep your password</span>
                   <p className="text-[11px] text-text-muted mt-0.5">
-                    Decryption is executed purely in your browser's local memory. Your password and raw statement are never stored, logged, or sent to any server.
+                    Decryption is executed purely in your browser&apos;s local memory. Your password and raw statement are never stored, logged, or sent to any server.
                   </p>
                 </div>
               </div>
