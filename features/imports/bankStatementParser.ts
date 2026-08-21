@@ -28,34 +28,25 @@ const MONTH_MAP: Readonly<Record<string, number>> = {
 };
 
 /**
- * Common bank statement non-transaction header/footer phrases to ignore.
+ * Common bank statement non-transaction document header/footer phrases to ignore.
  */
 const BANK_IGNORE_PATTERNS: readonly RegExp[] = [
-  /statement\s*of\s*account/i,
-  /penyata\s*akaun/i,
-  /malayan\s*banking/i,
-  /maybank\s*(?:islamic|berhad|2u|mae)?/i,
-  /cimb\s*(?:bank|islamic)?/i,
-  /public\s*bank/i,
-  /bank\s*islam/i,
-  /rhb\s*bank/i,
-  /hong\s*leong/i,
-  /balance\s*brought\s*forward/i,
-  /baki\s*dibawa\s*ke\s*hadapan/i,
-  /beginning\s*balance/i,
-  /ending\s*balance/i,
-  /total\s*(?:debits?|credits?)/i,
-  /jumlah\s*(?:debit|kredit)/i,
-  /page\s*\d+\s*of\s*\d+/i,
-  /muka\s*surat\s*\d+/i,
-  /account\s*(?:number|no|details)/i,
-  /nombor\s*akaun/i,
-  /entry\s*date/i,
-  /value\s*date/i,
-  /transaction\s*(?:description|details|date)/i,
-  /tarikh\s*(?:transaksi|masuk)/i,
-  /cheque\s*no/i,
-  /no\s*cek/i,
+  /^statement\s*of\s*account/i,
+  /^penyata\s*akaun/i,
+  /^balance\s*brought\s*forward/i,
+  /^baki\s*dibawa\s*ke\s*hadapan/i,
+  /^beginning\s*balance/i,
+  /^ending\s*balance/i,
+  /^closing\s*balance/i,
+  /^total\s*(?:debits?|credits?)/i,
+  /^jumlah\s*(?:debit|kredit)/i,
+  /^page\s*\d+\s*of\s*\d+/i,
+  /^muka\s*surat\s*\d+/i,
+  /^account\s*(?:number|no|details)\s*[:\-]/i,
+  /^nombor\s*akaun\s*[:\-]/i,
+  /^entry\s*date\s+value\s*date/i,
+  /^date\s+transaction\s*description/i,
+  /^tarikh\s+keterangan/i,
 ];
 
 /**
@@ -191,13 +182,13 @@ export function parseFlexibleDate(
  * - Parentheses: `(15.90)`
  * - Commas in thousands: `1,250.00`
  * - Currency prefix: `RM 15.90` / `MYR 15.90`
- * - Whole integer amounts: `RM 60` or `100.00`
+ * - Multiple numbers on line (debit vs balance disambiguation)
  */
 export function parseFlexibleAmount(cellOrLine: string): number | null {
   const normalized = cellOrLine.trim().replace(/,/g, '');
   if (!normalized) return null;
 
-  // 1. Trailing minus sign: e.g. 15.90- or 15.90 - (requires decimal .XX to prevent matching 2026- in dates)
+  // 1. Trailing minus sign: e.g. 15.90- or 15.90 - (strongest indicator of debit expense)
   const trailingMinus = /(?:RM|MYR)?\s*(\d{1,7}\.\d{1,2})\s*[-–]/i.exec(normalized);
   if (trailingMinus) {
     return myrToSen(trailingMinus[1]);
@@ -221,10 +212,19 @@ export function parseFlexibleAmount(cellOrLine: string): number | null {
     return myrToSen(currencyMatch[1]);
   }
 
-  // 5. Standard decimal amount: e.g. 15.90 (negative lookbehind to avoid date parts)
-  const match = /(?<!\d[-/])[-–]?\s*(\d{1,7}\.\d{1,2})/i.exec(normalized);
-  if (match) {
-    return myrToSen(match[1]);
+  // 5. Standard decimal amounts (find all decimal candidates not inside dates)
+  const decimalMatches = [...normalized.matchAll(/(?<!\d[-/])[-–]?\s*(\d{1,7}\.\d{2})\b/g)];
+  if (decimalMatches.length > 0) {
+    // If there's 1 match, return it
+    if (decimalMatches.length === 1) {
+      return myrToSen(decimalMatches[0][1]);
+    }
+    // If there are multiple numbers (e.g. Debit Amount + Balance), pick the first candidate
+    // or smaller candidate if first is clearly the transaction amount
+    const firstSen = myrToSen(decimalMatches[0][1]);
+    if (firstSen !== null && firstSen > 0) {
+      return firstSen;
+    }
   }
 
   return null;

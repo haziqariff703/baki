@@ -62,31 +62,30 @@ const MONTH_DATE_PATTERN = new RegExp(`\\b\\d{1,2}[\\s/-]+(?:${MONTH_TOKENS})(?:
 
 function extractMerchantFromLine(line: string): string {
   let text = line;
-  // 1. Strip dates: YYYY-MM-DD, DD/MM/YYYY, DD-MM-YYYY, DD/MM/YY, DD/MM
-  text = text.replace(/(?:\d{4}[/-]\d{1,2}[/-]\d{1,2}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{1,2}[/-]\d{1,2})/g, ' ');
-  // 2. Strip Month name dates: 15 JUL 2026, 15-Jul-24, 15 JUL
+  // 1. Strip timestamps: 14:32:00, 14:32
+  text = text.replace(/\b\d{1,2}:\d{2}(?::\d{2})?\b/g, ' ');
+  // 2. Strip dates: YYYY-MM-DD, DD/MM/YYYY, DD-MM-YYYY, DD/MM/YY, DD/MM, DD-MM
+  text = text.replace(/(?:\d{4}[/-]\d{1,2}[/-]\d{1,2}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\b\d{1,2}[/-]\d{1,2}\b)/g, ' ');
+  // 3. Strip Month name dates: 15 JUL 2026, 15-Jul-24, 15 JUL
   text = text.replace(MONTH_DATE_PATTERN, ' ');
-  // 3. Strip currency figures (with decimal .XX or ,XX and optional - / + / DR / CR / commas)
-  text = text.replace(/(?:RM|MYR)?\s*[-–(]?\s*\d{1,7}(?:,\d{3})*(?:[.,]\d{1,2})\s*(?:DR|CR|[-–+)])?/gi, ' ');
-  // 4. Strip payment railway noise
-  text = text.replace(/\b(?:duitnow(?:\s*qr|\s*transfer)?(?:\s*to)?|fpx(?:\s*to)?|ibg(?:\s*transfer|\s*to)?|jompay(?:\s*to)?|autodebit(?:\s*to)?|payment(?:\s*to)?|debit\s*card(?:\s*purchase|\s*pos)?|pos\s*purchase|instant\s*transfer)\b/gi, ' ');
-  // 5. Strip DR / CR / MYR / RM / plus / minus signs
+  // 4. Strip currency figures (with decimal .XX or ,XX and optional - / + / DR / CR / commas)
+  text = text.replace(/(?:RM|MYR)?\s*[-–(]?\s*\d{1,7}(?:,\d{3})*(?:\.\d{1,2})\s*(?:DR|CR|[-–+)])?/gi, ' ');
+  // 5. Strip payment railway noise, status words, and transaction codes
+  text = text.replace(
+    /\b(?:duitnow(?:\s*qr|\s*transfer)?(?:\s*to)?|fpx(?:\s*to)?|ibg(?:\s*transfer|\s*to)?|jompay(?:\s*to)?|autodebit(?:\s*to)?|direct\s*debit(?:\s*to)?|payment(?:\s*to)?|paid(?:\s*to)?|debit\s*card(?:\s*purchase|\s*pos)?|pos\s*purchase|instant\s*transfer|m2u(?:\s*trf|\s*transfer)?|maybank2u|cimb\s*clicks|trf\s*to|trf|pymt\s*to|pymt|qr\s*pymt|qr\s*payment|bill\s*pymt|ref\s*no:?|seq\s*no:?|card\s*no:?|successful|berjaya|failed|gagal|pending|completed)\b/gi,
+    ' ',
+  );
+  // 6. Strip DR / CR / MYR / RM / plus / minus signs
   text = text.replace(/\b(?:DR|CR|MYR|RM|POS|DEBIT|CREDIT)\b/gi, ' ');
-  // 6. Strip account numbers and phone numbers (digits 4+)
+  // 7. Strip account numbers and card fragments (digits 4+)
   text = text.replace(/\b\d{4,}\b/g, ' ');
-  // 7. Strip asterisks and noise symbols
-  text = text.replace(/[*_#]+/g, ' ');
+  // 8. Strip asterisks and noise symbols
+  text = text.replace(/[*_#|]+/g, ' ');
   text = text.replace(/\s+/g, ' ').trim();
 
   return sanitizeMerchantName(text);
 }
 
-/**
- * Parse text-based PDF bytes into validated import rows.
- *
- * Reconstructs visual table lines by clustering text items on their vertical (Y)
- * coordinates, making it resilient to Maybank, CIMB, and other bank statement PDF layouts.
- */
 /**
  * Extract transactions from a continuous text block or stream by segmenting on Date boundaries.
  * Universal fallback for bank statements with complex tabular or multi-column layouts.
@@ -99,34 +98,46 @@ export function extractTransactionsFromText(text: string): ImportRowSchema[] {
   const matches = [...text.matchAll(DATE_SPLIT_REGEX)];
   if (matches.length === 0) return rows;
 
-  for (let idx = 0; idx < matches.length; idx++) {
+  let idx = 0;
+  while (idx < matches.length) {
     const currentMatch = matches[idx];
     const startIndex = currentMatch.index ?? 0;
-    const nextIndex =
+    let nextIndex =
       idx + 1 < matches.length ? (matches[idx + 1].index ?? text.length) : text.length;
 
-    const block = text.slice(startIndex, nextIndex).trim();
-    if (!block || block.length < 5) continue;
+    let block = text.slice(startIndex, nextIndex).trim();
 
-    const transactionDate = parseFlexibleDate(block);
-    const amountSen = parseFlexibleAmount(block);
+    // If block is too short or lacks amount and there is a subsequent adjacent date (e.g. Post Date + Trans Date), merge them
+    if (parseFlexibleAmount(block) === null && idx + 1 < matches.length) {
+      idx += 1;
+      nextIndex =
+        idx + 1 < matches.length ? (matches[idx + 1].index ?? text.length) : text.length;
+      block = text.slice(startIndex, nextIndex).trim();
+    }
 
-    if (transactionDate !== null && amountSen !== null) {
-      const rawMerchant = extractMerchantFromLine(block);
-      if (rawMerchant && rawMerchant.length >= 2) {
-        const merchantName = canonicalMerchantName(rawMerchant);
-        if (merchantName) {
-          const parsed = importRowSchema.safeParse({
-            merchantName,
-            amountSen,
-            transactionDate,
-          });
-          if (parsed.success) {
-            rows.push(parsed.data);
+    if (block && block.length >= 5) {
+      const transactionDate = parseFlexibleDate(block);
+      const amountSen = parseFlexibleAmount(block);
+
+      if (transactionDate !== null && amountSen !== null) {
+        const rawMerchant = extractMerchantFromLine(block);
+        if (rawMerchant && rawMerchant.length >= 2) {
+          const merchantName = canonicalMerchantName(rawMerchant) || rawMerchant;
+          if (merchantName) {
+            const parsed = importRowSchema.safeParse({
+              merchantName,
+              amountSen,
+              transactionDate,
+            });
+            if (parsed.success) {
+              rows.push(parsed.data);
+            }
           }
         }
       }
     }
+
+    idx += 1;
   }
 
   return rows;
@@ -136,7 +147,7 @@ export function extractTransactionsFromText(text: string): ImportRowSchema[] {
  * Parse text-based PDF bytes into validated import rows.
  *
  * Employs a dual-strategy architecture:
- * 1. Visual row clustering with 2-line sliding window for aligned table statements.
+ * 1. Visual row clustering with 3-line sliding window for aligned table statements.
  * 2. Date-anchored continuous stream segmenter for multi-column or wrapped layouts.
  */
 export async function parsePdfText(
@@ -243,17 +254,17 @@ export async function parsePdfText(
         // Sort items top-to-bottom first to enable high-performance O(N) line clustering
         items.sort((a, b) => b.y - a.y || a.x - b.x);
 
-        // 2. Cluster text items into physical visual lines by vertical Y position (tolerance +/- 4.5px)
+        // 2. Cluster text items into physical visual lines by vertical Y position (tolerance +/- 6.0px)
         const yClusters: { y: number; items: PosItem[] }[] = [];
         for (const item of items) {
           const lastCluster = yClusters[yClusters.length - 1];
-          if (lastCluster && Math.abs(lastCluster.y - item.y) <= 4.5) {
+          if (lastCluster && Math.abs(lastCluster.y - item.y) <= 6.0) {
             lastCluster.items.push(item);
           } else {
             // Small lookback in case of slightly tilted glyph order
             let matched = false;
             for (let k = yClusters.length - 2; k >= Math.max(0, yClusters.length - 4); k--) {
-              if (Math.abs(yClusters[k].y - item.y) <= 4.5) {
+              if (Math.abs(yClusters[k].y - item.y) <= 6.0) {
                 yClusters[k].items.push(item);
                 matched = true;
                 break;
@@ -301,7 +312,7 @@ export async function parsePdfText(
 
         const pageRows: ImportRowSchema[] = [];
 
-        // Strategy 1: Process visual lines with sliding window
+        // Strategy 1: Process visual lines with 3-line sliding window
         let i = 0;
         while (i < lines.length) {
           const currentLine = sanitizeText(lines[i]);
@@ -315,19 +326,33 @@ export async function parsePdfText(
           let matchedLine = currentLine;
           let consumed = 1;
 
-          // If current line lacks amount or date, attempt merging with adjacent next line
+          // If current line lacks amount or date, attempt merging with adjacent 1 or 2 lines
           if ((amountSen === null || transactionDate === null) && i + 1 < lines.length) {
-            const nextLine = sanitizeText(lines[i + 1]);
-            if (nextLine && !isBankHeaderOrNoise(nextLine)) {
-              const combined = `${currentLine} ${nextLine}`;
-              const combinedAmount = parseFlexibleAmount(combined);
-              const combinedDate = parseFlexibleDate(combined);
+            const line1 = sanitizeText(lines[i + 1]);
+            if (line1 && !isBankHeaderOrNoise(line1)) {
+              const combined1 = `${currentLine} ${line1}`;
+              const amt1 = parseFlexibleAmount(combined1);
+              const date1 = parseFlexibleDate(combined1);
 
-              if (combinedAmount !== null && combinedDate !== null) {
-                amountSen = combinedAmount;
-                transactionDate = combinedDate;
-                matchedLine = combined;
+              if (amt1 !== null && date1 !== null) {
+                amountSen = amt1;
+                transactionDate = date1;
+                matchedLine = combined1;
                 consumed = 2;
+              } else if (i + 2 < lines.length) {
+                const line2 = sanitizeText(lines[i + 2]);
+                if (line2 && !isBankHeaderOrNoise(line2)) {
+                  const combined2 = `${currentLine} ${line1} ${line2}`;
+                  const amt2 = parseFlexibleAmount(combined2);
+                  const date2 = parseFlexibleDate(combined2);
+
+                  if (amt2 !== null && date2 !== null) {
+                    amountSen = amt2;
+                    transactionDate = date2;
+                    matchedLine = combined2;
+                    consumed = 3;
+                  }
+                }
               }
             }
           }
@@ -335,7 +360,7 @@ export async function parsePdfText(
           if (amountSen !== null && transactionDate !== null) {
             const rawMerchant = extractMerchantFromLine(matchedLine);
             if (rawMerchant && rawMerchant.length >= 2) {
-              const merchantName = canonicalMerchantName(rawMerchant);
+              const merchantName = canonicalMerchantName(rawMerchant) || rawMerchant;
               if (merchantName) {
                 const parsedRow = importRowSchema.safeParse({
                   merchantName,
@@ -356,14 +381,19 @@ export async function parsePdfText(
         // Strategy 2: Date-anchored continuous stream segmenter fallback / supplement
         const streamRows = extractTransactionsFromText(pageRawStream);
 
-        // If Strategy 1 found fewer rows than Strategy 2 (or 0), use Strategy 2
-        if (pageRows.length >= streamRows.length && pageRows.length > 0) {
-          rows.push(...pageRows);
-        } else if (streamRows.length > 0) {
-          rows.push(...streamRows);
-        } else {
-          rows.push(...pageRows);
+        // Deduplicate rows across Strategy 1 and Strategy 2
+        const seenKeys = new Set<string>();
+        const mergedPageRows: ImportRowSchema[] = [];
+
+        for (const row of [...pageRows, ...streamRows]) {
+          const key = `${row.merchantName.toLowerCase()}-${row.transactionDate.slice(0, 10)}-${row.amountSen}`;
+          if (!seenKeys.has(key)) {
+            seenKeys.add(key);
+            mergedPageRows.push(row);
+          }
         }
+
+        rows.push(...mergedPageRows);
       } finally {
         // Explicitly release page memory to avoid iOS Safari WebKit memory exhaustion
         page.cleanup();
