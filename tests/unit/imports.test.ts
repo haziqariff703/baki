@@ -350,13 +350,40 @@ describe('parsePdfText (text-based PDF)', () => {
     expect(result2.rows[0].amountSen).toBe(6000);
   });
 
-  it('extracts rows from two-line wrapped transactions', async () => {
-    const pdf = makeTextPdf('15/07/2026 SPOTIFY MALAYSIA 15.90-');
+  it('extracts rows from two-line and three-line wrapped transactions', async () => {
+    const pdf = makeTextPdf('15/07/2026\nMAYBANK2U TRF SPOTIFY MALAYSIA\n15.90- 2,400.00');
     const result = await parsePdfText(pdf);
     expect(result.rows).toHaveLength(1);
     expect(result.rows[0].merchantName).toBe('Spotify');
     expect(result.rows[0].amountSen).toBe(1590);
     expect(result.rows[0].transactionDate).toBe('2026-07-15T00:00:00.000Z');
+  });
+
+  it('extracts rows from CIMB Clicks statements with bank descriptor prefix', async () => {
+    const pdf = makeTextPdf('01-AUG-2026 CIMB CLICKS TRF NETFLIX 55.00 DR 2,000.00');
+    const result = await parsePdfText(pdf);
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].merchantName).toBe('Netflix');
+    expect(result.rows[0].amountSen).toBe(5500);
+    expect(result.rows[0].transactionDate).toBe('2026-08-01T00:00:00.000Z');
+  });
+
+  it('extracts rows from Touch n Go eWallet PDF statement lines', async () => {
+    const pdf = makeTextPdf('20/08/2026 14:32:00 Payment to Spotify MYR 15.90 Successful');
+    const result = await parsePdfText(pdf);
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].merchantName).toBe('Spotify');
+    expect(result.rows[0].amountSen).toBe(1590);
+    expect(result.rows[0].transactionDate).toBe('2026-08-20T00:00:00.000Z');
+  });
+
+  it('extracts rows from Bank Islam transfer statements', async () => {
+    const pdf = makeTextPdf('01/08/26 100234 TRF SPOTIFY 15.90 500.00');
+    const result = await parsePdfText(pdf);
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].merchantName).toBe('Spotify');
+    expect(result.rows[0].amountSen).toBe(1590);
+    expect(result.rows[0].transactionDate).toBe('2026-08-01T00:00:00.000Z');
   });
 
   it('reports empty when no embedded text is present', async () => {

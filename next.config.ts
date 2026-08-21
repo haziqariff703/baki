@@ -4,6 +4,7 @@ const withNextIntl = createNextIntlPlugin('./i18n/request.ts');
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  serverExternalPackages: ['pdfjs-dist', 'tesseract.js'],
   images: {
     // Required in Next 16 — allowlist the single default quality.
     qualities: [75],
@@ -43,7 +44,7 @@ const nextConfig = {
           },
           {
             key: 'Permissions-Policy',
-            value: 'camera=(), microphone=(), geolocation=()',
+            value: 'camera=(self), microphone=(), geolocation=()',
           },
         ],
       },

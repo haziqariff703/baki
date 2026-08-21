@@ -18,4 +18,4 @@ export {
 export type { ImportError, ImportOutcome } from './importPipeline';
 export { SupabaseImportStorage } from './storage';
 export type { ImportFileStorageProvider } from './storage';
-export { parseReceiptLines } from './ocr';
+export { parseReceiptLines, recognizeReceiptImage } from './ocr';

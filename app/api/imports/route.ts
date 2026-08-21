@@ -118,46 +118,77 @@ export async function POST(request: Request) {
       );
     }
 
+    const password = formData.get('password');
+    const statementPassword =
+      typeof password === 'string' && password.trim() ? password.trim() : undefined;
+
     const transactionRepo = new SupabaseTransactionRepository(supabase);
     const candidateRepo = new SupabaseRecurringCandidateRepository(supabase);
 
-    const outcome = await runImport({
-      userId: user.id,
-      source: sourceFromMime(descriptor.type),
-      fileName: descriptor.name,
-      bytes,
-      idempotencyKey: parsed.idempotencyKey,
-      storage: new SupabaseImportStorage(supabase),
-      transactionRepo,
-      importRepo: new SupabaseImportRepository(supabase),
-    });
-
-    // Step 4: Run deterministic recurring cadence detection on user transactions (§2.1)
-    let candidatesCount = 0;
     try {
-      const history = await transactionRepo.list(user.id);
-      const newCandidates = detectRecurringCadence(history);
-      if (newCandidates.length > 0) {
-        await candidateRepo.insertMany(user.id, newCandidates);
-        candidatesCount = newCandidates.length;
-      }
-    } catch (cadenceErr) {
-      console.error('[imports POST] Cadence detection warning:', cadenceErr);
-    }
+      const outcome = await runImport({
+        userId: user.id,
+        source: sourceFromMime(descriptor.type),
+        fileName: descriptor.name,
+        bytes,
+        password: statementPassword,
+        idempotencyKey: parsed.idempotencyKey,
+        storage: new SupabaseImportStorage(supabase),
+        transactionRepo,
+        importRepo: new SupabaseImportRepository(supabase),
+      });
 
-    // §11 step 5 — sanitized response (no raw file content, no financial figures).
-    return NextResponse.json(
-      {
-        success: true,
-        import: outcome.import,
-        rows: outcome.rows,
-        errors: outcome.errors,
-        truncated: outcome.truncated,
-        importedCount: outcome.importedCount,
-        candidatesCount,
-      },
-      { status: 201 },
-    );
+      // Step 4: Run deterministic recurring cadence detection on user transactions (§2.1)
+      let candidatesCount = 0;
+      try {
+        const history = await transactionRepo.list(user.id);
+        const newCandidates = detectRecurringCadence(history);
+        if (newCandidates.length > 0) {
+          await candidateRepo.insertMany(user.id, newCandidates);
+          candidatesCount = newCandidates.length;
+        }
+      } catch (cadenceErr) {
+        console.error('[imports POST] Cadence detection warning:', cadenceErr);
+      }
+
+      // §11 step 5 — sanitized response (no raw file content, no financial figures).
+      return NextResponse.json(
+        {
+          success: true,
+          import: outcome.import,
+          rows: outcome.rows,
+          errors: outcome.errors,
+          truncated: outcome.truncated,
+          importedCount: outcome.importedCount,
+          candidatesCount,
+        },
+        { status: 201 },
+      );
+    } catch (importErr) {
+      if (importErr instanceof Error) {
+        if (importErr.message === 'PASSWORD_REQUIRED') {
+          return NextResponse.json(
+            {
+              error: 'PASSWORD_REQUIRED',
+              message:
+                'This bank statement is password-protected. Please enter your IC number / statement password.',
+            },
+            { status: 422 },
+          );
+        }
+        if (importErr.message === 'INVALID_PASSWORD') {
+          return NextResponse.json(
+            {
+              error: 'INVALID_PASSWORD',
+              message:
+                'Incorrect statement password or IC number. Please check and try again.',
+            },
+            { status: 422 },
+          );
+        }
+      }
+      throw importErr;
+    }
   } catch (error) {
     return toErrorResponse(error, 'imports POST');
   }
