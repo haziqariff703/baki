@@ -13,7 +13,7 @@ import { SupabaseSubscriptionRepository } from '@/features/subscriptions/reposit
 export default async function SubscriptionsPage() {
   const t = await getTranslations('Subscriptions');
 
-  let initialSubscriptions = syntheticSubscriptions;
+  let initialSubscriptions: any[] = [];
 
   try {
     const supabase = await createClient();
@@ -22,9 +22,10 @@ export default async function SubscriptionsPage() {
     if (user) {
       const repo = new SupabaseSubscriptionRepository(supabase);
       const subs = await repo.list(user.id);
-      if (subs && subs.length > 0) {
-        initialSubscriptions = subs;
-      }
+      initialSubscriptions = (subs ?? []) as any[];
+    } else {
+      // Guest demo session fallback only when unauthenticated
+      initialSubscriptions = syntheticSubscriptions as any[];
     }
   } catch (error) {
     console.error('[SubscriptionsPage] Server hydration error:', error);

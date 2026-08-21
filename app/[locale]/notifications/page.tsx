@@ -13,7 +13,7 @@ import { SupabaseSubscriptionRepository } from '@/features/subscriptions/reposit
 export default async function NotificationsPage() {
   const t = await getTranslations('Notifications');
 
-  let renewals = syntheticRenewals as any[];
+  let renewals: any[] = [];
 
   try {
     const supabase = await createClient();
@@ -23,16 +23,17 @@ export default async function NotificationsPage() {
       const subRepo = new SupabaseSubscriptionRepository(supabase);
       const subscriptions = await subRepo.list(user.id);
 
-      if (subscriptions && subscriptions.length > 0) {
-        renewals = subscriptions.map((s) => ({
-          id: s.id,
-          merchantName: s.merchantName,
-          amountSen: s.amountSen,
-          cycle: s.cycle,
-          nextChargeDate: s.nextChargeDate,
-          reminderOffsets: [],
-        }));
-      }
+      renewals = (subscriptions ?? []).map((s) => ({
+        id: s.id,
+        merchantName: s.merchantName,
+        amountSen: s.amountSen,
+        cycle: s.cycle,
+        nextChargeDate: s.nextChargeDate,
+        reminderOffsets: [],
+      }));
+    } else {
+      // Guest demo session fallback only when unauthenticated
+      renewals = syntheticRenewals as any[];
     }
   } catch (error) {
     console.error('[NotificationsPage] Server hydration error:', error);

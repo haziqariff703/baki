@@ -61,9 +61,9 @@ export default async function DashboardPage() {
   const t = await getTranslations('Dashboard');
   const tCommon = await getTranslations('Common');
 
-  let initialSubscriptions = syntheticSubscriptions;
-  let candidates = syntheticCandidates;
-  let availableBalanceSen = syntheticAvailableBalanceSen;
+  let initialSubscriptions: any[] = [];
+  let candidates: any[] = [];
+  let availableBalanceSen = 0;
   let isStudent = false;
   let userEmail: string | undefined = undefined;
   let userProfile: any = null;
@@ -76,15 +76,11 @@ export default async function DashboardPage() {
       userEmail = user.email;
       const subRepo = new SupabaseSubscriptionRepository(supabase);
       const userSubs = await subRepo.list(user.id);
-      if (userSubs) {
-        initialSubscriptions = userSubs as any;
-      }
+      initialSubscriptions = (userSubs ?? []) as any[];
 
       const candRepo = new SupabaseRecurringCandidateRepository(supabase);
       const userCands = await candRepo.list(user.id);
-      if (userCands) {
-        candidates = userCands as any;
-      }
+      candidates = (userCands ?? []) as any[];
 
       const { data: profile } = await supabase
         .from('profiles')
@@ -101,6 +97,11 @@ export default async function DashboardPage() {
           ? profile.education_tier === 'tertiary_student'
           : Boolean(profile.is_student);
       }
+    } else {
+      // Guest demo session fallback only when unauthenticated
+      initialSubscriptions = syntheticSubscriptions as any[];
+      candidates = syntheticCandidates as any[];
+      availableBalanceSen = syntheticAvailableBalanceSen;
     }
   } catch (error) {
     // Graceful fallback to demo fixtures if network/DB is unavailable (§13.3)

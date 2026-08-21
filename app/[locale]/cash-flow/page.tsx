@@ -18,9 +18,9 @@ import { CashFlowPrintReport } from '@/components/cash-flow/CashFlowPrintReport'
 export default async function CashFlowPage() {
   const t = await getTranslations('CashFlow');
 
-  let subscriptions = syntheticSubscriptions as any[];
-  let renewals = syntheticRenewals as any[];
-  let availableBalanceSen = syntheticAvailableBalanceSen;
+  let subscriptions: any[] = [];
+  let renewals: any[] = [];
+  let availableBalanceSen = 0;
   let userProfile: UserProfile | null = null;
 
   try {
@@ -31,17 +31,15 @@ export default async function CashFlowPage() {
       const subRepo = new SupabaseSubscriptionRepository(supabase);
       const userSubs = await subRepo.list(user.id);
 
-      if (userSubs && userSubs.length > 0) {
-        subscriptions = userSubs as any;
-        renewals = userSubs.map((s) => ({
-          id: s.id,
-          merchantName: s.merchantName,
-          amountSen: s.amountSen,
-          cycle: s.cycle,
-          nextChargeDate: s.nextChargeDate,
-          reminderOffsets: [],
-        }));
-      }
+      subscriptions = (userSubs ?? []) as any[];
+      renewals = (userSubs ?? []).map((s) => ({
+        id: s.id,
+        merchantName: s.merchantName,
+        amountSen: s.amountSen,
+        cycle: s.cycle,
+        nextChargeDate: s.nextChargeDate,
+        reminderOffsets: [],
+      }));
 
       const { data: profile } = await supabase
         .from('profiles')
@@ -66,6 +64,11 @@ export default async function CashFlowPage() {
           statementRetentionWindow: profile.statement_retention_window || 'immediate',
         };
       }
+    } else {
+      // Guest demo session fallback only when unauthenticated
+      subscriptions = syntheticSubscriptions as any[];
+      renewals = syntheticRenewals as any[];
+      availableBalanceSen = syntheticAvailableBalanceSen;
     }
   } catch (error) {
     console.error('[CashFlowPage] Server hydration error:', error);
