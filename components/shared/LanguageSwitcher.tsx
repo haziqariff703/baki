@@ -1,8 +1,17 @@
 'use client';
 
+/**
+ * Language Switcher component.
+ *
+ * Implements seamless toggling between English (en-MY) and Bahasa Melayu (ms-MY)
+ * using next-intl locale routing (AGENTS.md §16).
+ * Styled with Baki DESIGN.md tokens without emojis or decorative clutter.
+ */
+
 import { useLocale } from 'next-intl';
 import { usePathname, useRouter } from '@/i18n/routing';
 import { Globe } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 export default function LanguageSwitcher() {
   const locale = useLocale();
@@ -10,31 +19,42 @@ export default function LanguageSwitcher() {
   const pathname = usePathname();
 
   const toggleLanguage = (newLocale: string) => {
-    router.replace(pathname, { locale: newLocale });
+    if (newLocale !== locale) {
+      router.replace(pathname, { locale: newLocale });
+    }
   };
 
+  const buttonClass = (active: boolean) =>
+    cn(
+      'px-2 py-0.5 rounded-lg transition-colors text-xs font-mono',
+      'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent',
+      active
+        ? 'bg-accent text-surface-0 font-semibold shadow-xs'
+        : 'text-text-muted hover:text-text-primary hover:bg-surface-3',
+    );
+
   return (
-    <div className="flex items-center space-x-1 bg-[#141414] p-1 rounded-lg border border-[#333] text-xs font-medium">
-      <Globe className="w-3.5 h-3.5 text-[#555] ml-1" />
+    <div
+      role="group"
+      aria-label="Language selection"
+      className="flex items-center space-x-0.5 bg-surface-2/60 p-0.5 rounded-xl border border-border-2 text-xs font-medium"
+    >
+      <Globe className="w-3.5 h-3.5 text-text-faint ml-1.5 mr-0.5 shrink-0" aria-hidden="true" />
       <button
+        type="button"
         onClick={() => toggleLanguage('en')}
-        className={`px-2 py-1 rounded transition-colors ${
-          locale === 'en'
-            ? 'bg-[#222] text-white shadow-sm font-semibold'
-            : 'text-[#888] hover:text-white'
-        }`}
+        aria-pressed={locale === 'en'}
+        className={buttonClass(locale === 'en')}
       >
         EN
       </button>
       <button
+        type="button"
         onClick={() => toggleLanguage('ms')}
-        className={`px-2 py-1 rounded transition-colors ${
-          locale === 'ms'
-            ? 'bg-[#222] text-white shadow-sm font-semibold'
-            : 'text-[#888] hover:text-white'
-        }`}
+        aria-pressed={locale === 'ms'}
+        className={buttonClass(locale === 'ms')}
       >
-        MS
+        BM
       </button>
     </div>
   );
