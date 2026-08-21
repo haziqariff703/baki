@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseReceiptLines } from '@/features/imports/ocr';
+import { parseReceiptLines, parseDuitNowQrPayload } from '@/features/imports/ocr';
 
 describe('Receipt OCR Text Parser (§12 / §2.1)', () => {
   it('parses Touch n Go eWallet subscription slip text', () => {
@@ -142,6 +142,23 @@ describe('Receipt OCR Text Parser (§12 / §2.1)', () => {
   it('sanitizes text and ignores empty inputs', () => {
     expect(parseReceiptLines('').rows.length).toBe(0);
     expect(parseReceiptLines('Just random text with no amount or date').rows.length).toBe(0);
+  });
+
+  it('decodes DuitNow EMVCo QR code payloads directly', () => {
+    const emvcoPayload =
+      '00020101021226580014A00000072700200112123456789012520459995303458540515.905802MY5916Spotify Malaysia6012Kuala Lumpur';
+    const parsed = parseDuitNowQrPayload(emvcoPayload);
+    expect(parsed).not.toBeNull();
+    expect(parsed?.merchantName.toLowerCase()).toContain('spotify');
+    expect(parsed?.amountSen).toBe(1590);
+  });
+
+  it('decodes payment URL QR codes with query parameters', () => {
+    const urlQr = 'https://duitnow.my/pay?to=Netflix%20Malaysia&amt=55.00&ref=SUB123';
+    const parsed = parseDuitNowQrPayload(urlQr);
+    expect(parsed).not.toBeNull();
+    expect(parsed?.merchantName.toLowerCase()).toContain('netflix');
+    expect(parsed?.amountSen).toBe(5500);
   });
 });
 

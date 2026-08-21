@@ -151,18 +151,105 @@ export function parseReceiptLines(rawText: string): {
   };
 }
 
+import jsQR from 'jsqr';
+
+/**
+ * Parse standard EMVCo DuitNow QR payloads or payment URLs into structured transaction data.
+ * Standard DuitNow QR: Tag 59 = Merchant Name, Tag 54 = Amount, Tag 53 = Currency (458 = MYR).
+ */
+export function parseDuitNowQrPayload(payload: string): ImportRowSchema | null {
+  if (!payload || payload.length < 10) return null;
+
+  let merchantName: string | null = null;
+  let amountSen: number | null = null;
+
+  // 1. Recursive / stream EMVCo TLV parser (Tag-Length-Value)
+  function parseTlv(str: string) {
+    let idx = 0;
+    while (idx < str.length - 4) {
+      const tag = str.slice(idx, idx + 2);
+      const lenStr = str.slice(idx + 2, idx + 4);
+      const len = parseInt(lenStr, 10);
+      if (isNaN(len) || idx + 4 + len > str.length) {
+        idx += 1;
+        continue;
+      }
+
+      const val = str.slice(idx + 4, idx + 4 + len);
+      if (tag === '59') {
+        merchantName = sanitizeMerchantName(val);
+      } else if (tag === '54') {
+        amountSen = parseFlexibleAmount(val);
+      } else if (['26', '27', '28', '62'].includes(tag)) {
+        // Parse nested sub-templates (e.g. Merchant Account Info or Additional Data)
+        parseTlv(val);
+      }
+      idx += 4 + len;
+    }
+  }
+
+  parseTlv(payload);
+
+  // 2. Regex fallback for non-standard EMVCo or nested tags
+  if (!merchantName) {
+    const tag59Match = /59(\d{2})([A-Za-z0-9\s\-_.@*&]{2,50})/i.exec(payload);
+    if (tag59Match) {
+      const expectedLen = parseInt(tag59Match[1], 10);
+      const name = tag59Match[2].slice(0, expectedLen);
+      if (name.trim().length >= 2) {
+        merchantName = sanitizeMerchantName(name);
+      }
+    }
+  }
+
+  if (amountSen === null) {
+    const tag54Match = /54(\d{2})(\d{1,6}(?:\.\d{1,2})?)/i.exec(payload);
+    if (tag54Match) {
+      const expectedLen = parseInt(tag54Match[1], 10);
+      const amtStr = tag54Match[2].slice(0, expectedLen);
+      amountSen = parseFlexibleAmount(amtStr);
+    }
+  }
+
+  // 3. URL Query Params fallback (e.g. duitnow.my/pay?amt=15.90&to=Spotify)
+  if (!merchantName || amountSen === null) {
+    const amtMatch = /[?&](?:amt|amount|value|total)=(\d+(?:\.\d{1,2})?)/i.exec(payload);
+    if (amtMatch) amountSen = parseFlexibleAmount(amtMatch[1]);
+
+    const merMatch = /[?&](?:merchant|name|biller|receiver|to)=([^&]+)/i.exec(payload);
+    if (merMatch) merchantName = sanitizeMerchantName(decodeURIComponent(merMatch[1]));
+  }
+
+  if (merchantName && amountSen !== null && amountSen > 0) {
+    const canonical = canonicalMerchantName(merchantName) || merchantName;
+    const validated = importRowSchema.safeParse({
+      merchantName: canonical,
+      amountSen,
+      transactionDate: new Date().toISOString(),
+    });
+    if (validated.success) {
+      return validated.data;
+    }
+  }
+
+  return null;
+}
+
 /**
  * Preprocess image in browser memory using HTML5 Canvas:
- * 1. Rescales to optimal OCR dimensions (max 1800px).
- * 2. Converts to Grayscale.
- * 3. Dynamically inverts dark theme screenshots (black background -> white background).
- * 4. Stretches contrast so stylized bank app fonts become crisp for Tesseract WASM.
+ * 1. Automatically crops out phone status bars (battery/clock) and bottom action buttons on mobile screenshots.
+ * 2. Scans for DuitNow QR codes with jsQR.
+ * 3. Rescales to optimal OCR dimensions (max 1800px).
+ * 4. Converts to Grayscale and inverts dark theme screenshots for maximum Tesseract OCR clarity.
  */
 async function preprocessImageForOcr(
   imageSource: File | Blob,
-): Promise<Blob | File> {
+): Promise<{
+  readonly processedBlob: Blob | File;
+  readonly detectedQrRow: ImportRowSchema | null;
+}> {
   if (typeof document === 'undefined' || typeof window === 'undefined') {
-    return imageSource; // Server-side fallback
+    return { processedBlob: imageSource, detectedQrRow: null }; // Server-side fallback
   }
 
   try {
@@ -179,31 +266,66 @@ async function preprocessImageForOcr(
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) {
       URL.revokeObjectURL(url);
-      return imageSource;
+      return { processedBlob: imageSource, detectedQrRow: null };
     }
 
+    const origWidth = img.width;
+    const origHeight = img.height;
+
+    // Detect if this is a tall mobile screenshot (aspect ratio > 1.6)
+    const isMobileScreenshot = origHeight / origWidth > 1.6;
+
+    // Smart Crop: Skip top 6% (status bar / clock / battery) and bottom 8% (action buttons) on tall screenshots
+    const cropTop = isMobileScreenshot ? Math.round(origHeight * 0.06) : 0;
+    const cropBottom = isMobileScreenshot ? Math.round(origHeight * 0.08) : 0;
+    const croppedHeight = origHeight - cropTop - cropBottom;
+
     const MAX_DIM = 1800;
-    let { width, height } = img;
-    if (width > MAX_DIM || height > MAX_DIM) {
-      if (width > height) {
-        height = Math.round((height * MAX_DIM) / width);
-        width = MAX_DIM;
+    let targetWidth = origWidth;
+    let targetHeight = croppedHeight;
+
+    if (targetWidth > MAX_DIM || targetHeight > MAX_DIM) {
+      if (targetWidth > targetHeight) {
+        targetHeight = Math.round((targetHeight * MAX_DIM) / targetWidth);
+        targetWidth = MAX_DIM;
       } else {
-        width = Math.round((width * MAX_DIM) / height);
-        height = MAX_DIM;
+        targetWidth = Math.round((targetWidth * MAX_DIM) / targetHeight);
+        targetHeight = MAX_DIM;
       }
     }
 
-    canvas.width = width;
-    canvas.height = height;
-    ctx.drawImage(img, 0, 0, width, height);
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+
+    ctx.drawImage(
+      img,
+      0,
+      cropTop,
+      origWidth,
+      croppedHeight,
+      0,
+      0,
+      targetWidth,
+      targetHeight,
+    );
     URL.revokeObjectURL(url);
 
-    const imgData = ctx.getImageData(0, 0, width, height);
-    const data = imgData.data;
+    const imgData = ctx.getImageData(0, 0, targetWidth, targetHeight);
 
+    // Step 1: Scan for DuitNow QR code payload with jsQR
+    let detectedQrRow: ImportRowSchema | null = null;
+    try {
+      const qrCode = jsQR(imgData.data, targetWidth, targetHeight);
+      if (qrCode && qrCode.data) {
+        detectedQrRow = parseDuitNowQrPayload(qrCode.data);
+      }
+    } catch {
+      // jsQR scan non-blocking fallback
+    }
+
+    const data = imgData.data;
     let totalGray = 0;
-    const pixelCount = width * height;
+    const pixelCount = targetWidth * targetHeight;
 
     // First pass: grayscale and calculate average background brightness
     for (let i = 0; i < data.length; i += 4) {
@@ -237,14 +359,17 @@ async function preprocessImageForOcr(
       canvas.toBlob((b) => resolve(b), 'image/png');
     });
 
-    return processedBlob || imageSource;
+    return {
+      processedBlob: processedBlob || imageSource,
+      detectedQrRow,
+    };
   } catch {
-    return imageSource;
+    return { processedBlob: imageSource, detectedQrRow: null };
   }
 }
 
 /**
- * In-browser Image OCR recognizer using Tesseract.js.
+ * In-browser Image OCR recognizer using jsQR and Tesseract.js.
  *
  * Runs client-side in a WebAssembly worker without uploading raw user images
  * to external cloud services (AGENTS.md §2.3 Privacy by Design).
@@ -260,7 +385,21 @@ export async function recognizeReceiptImage(
   let targetInput: File | Blob | string = imageFile;
 
   if (typeof imageFile !== 'string') {
-    targetInput = await preprocessImageForOcr(imageFile);
+    const preprocessed = await preprocessImageForOcr(imageFile);
+    targetInput = preprocessed.processedBlob;
+
+    // If DuitNow QR code with transaction details was decoded directly, return it immediately
+    if (preprocessed.detectedQrRow) {
+      return {
+        text: `DuitNow QR: ${preprocessed.detectedQrRow.merchantName} RM ${(preprocessed.detectedQrRow.amountSen / 100).toFixed(2)}`,
+        rows: [preprocessed.detectedQrRow],
+        rawLines: [
+          `Merchant: ${preprocessed.detectedQrRow.merchantName}`,
+          `Amount: RM ${(preprocessed.detectedQrRow.amountSen / 100).toFixed(2)}`,
+          `Date: ${preprocessed.detectedQrRow.transactionDate.slice(0, 10)}`,
+        ],
+      };
+    }
   }
 
   const { createWorker } = await import('tesseract.js');

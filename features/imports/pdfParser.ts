@@ -1,4 +1,4 @@
-import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist';
+import { getDocumentProxy } from 'unpdf';
 
 import { importRowSchema, type ImportRowSchema } from '@/lib/validation';
 import { sanitizeMerchantName, sanitizeText } from './sanitize';
@@ -28,40 +28,6 @@ export interface PdfParseResult {
   readonly empty: boolean;
   /** True if the page count exceeded MAX_PDF_PAGES and later pages were skipped. */
   readonly truncated: boolean;
-}
-
-// ---------------------------------------------------------------------------
-// pdfjs worker setup (Node / main-thread).
-// ---------------------------------------------------------------------------
-
-interface PdfjsWorkerHandler {
-  WorkerMessageHandler: unknown;
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-declare const globalThis: any & { pdfjsWorker?: PdfjsWorkerHandler };
-
-let workerReady: Promise<void> | null = null;
-
-function ensurePdfWorker(): Promise<void> {
-  if (typeof window !== 'undefined') {
-    return Promise.resolve();
-  }
-  if (globalThis.pdfjsWorker?.WorkerMessageHandler) {
-    return Promise.resolve();
-  }
-  if (workerReady) return workerReady;
-  workerReady = (async () => {
-    try {
-      const workerModule = (await import(
-        'pdfjs-dist/legacy/build/pdf.worker.mjs'
-      )) as PdfjsWorkerHandler;
-      globalThis.pdfjsWorker = workerModule;
-    } catch {
-      // ignore
-    }
-  })();
-  return workerReady;
 }
 
 const MONTH_TOKENS = 'jan|january|januari|feb|february|februari|mar|march|mac|apr|april|may|mei|jun|june|jul|july|julai|aug|august|ogo|ogos|sep|sept|september|oct|october|okt|oktober|nov|november|dec|december|dis|disember';
@@ -153,42 +119,21 @@ export function extractTransactionsFromText(text: string): ImportRowSchema[] {
 /**
  * Parse text-based PDF bytes into validated import rows.
  *
- * Employs a dual-strategy architecture:
- * 1. Visual row clustering with 3-line sliding window for aligned table statements.
- * 2. Date-anchored continuous stream segmenter for multi-column or wrapped layouts.
+ * Employs unpdf for universal zero-config PDF processing across Vercel serverless,
+ * Node.js, and browser runtimes.
  */
 export async function parsePdfText(
   data: ArrayBuffer | Uint8Array,
   password?: string,
 ): Promise<PdfParseResult> {
-  await ensurePdfWorker();
+  const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
 
-  const isBrowser = typeof window !== 'undefined';
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const pdfjsLib: any = isBrowser
-    ? await import('pdfjs-dist')
-    : await import('pdfjs-dist/legacy/build/pdf.mjs');
-
-  const { getDocument, GlobalWorkerOptions } = pdfjsLib;
-
-  if (isBrowser && GlobalWorkerOptions && !GlobalWorkerOptions.workerSrc) {
-    GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version || '4.10.38'}/build/pdf.worker.min.mjs`;
-  }
-
-  const bytes =
-    data instanceof Uint8Array ? data : new Uint8Array(data);
-
-  let doc: PDFDocumentProxy;
-  let loadingTask: Awaited<ReturnType<typeof getDocument>>;
+  let doc: any;
   try {
-    loadingTask = getDocument({
-      data: bytes,
-      disableFontFace: true,
-      verbosity: 0,
+    doc = await getDocumentProxy(bytes, {
       password: password ?? undefined,
-      useSystemFonts: true,
     });
-    doc = await loadingTask.promise;
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message : String(err);
     const errName = (err as { name?: string })?.name;
@@ -230,7 +175,8 @@ export async function parsePdfText(
     if (pageCount > MAX_PDF_PAGES) truncated = true;
 
     for (let pageNum = 1; pageNum <= limit; pageNum += 1) {
-      let page: PDFPageProxy;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let page: any;
       try {
         page = await doc.getPage(pageNum);
       } catch {
@@ -422,7 +368,9 @@ export async function parsePdfText(
         rows.push(...mergedPageRows);
       } finally {
         // Explicitly release page memory to avoid iOS Safari WebKit memory exhaustion
-        page.cleanup();
+        if (typeof page?.cleanup === 'function') {
+          page.cleanup();
+        }
       }
 
       // Micro-yield to browser event loop so animations and UI don't freeze on mobile
@@ -431,7 +379,9 @@ export async function parsePdfText(
       }
     }
   } finally {
-    await loadingTask.destroy();
+    if (typeof doc?.destroy === 'function') {
+      await doc.destroy();
+    }
   }
 
   return { rows, errors, empty: !extractedAnyText, truncated };
