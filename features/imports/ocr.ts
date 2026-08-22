@@ -7,12 +7,88 @@ import {
   isBankHeaderOrNoise,
 } from './bankStatementParser';
 import { extractTransactionsFromText } from './pdfParser';
+import jsQR from 'jsqr';
 
 /**
- * Deterministic Receipt & Invoice Text Line Parser (§12 Privacy / §2.1 Deterministic).
+ * Zero-Retention Memory Destruction Helper (AGENTS.md §2.3 / §12).
+ *
+ * Explicitly releases HTML5 Canvas buffers, Image elements, and Blob URLs
+ * from browser RAM immediately after OCR or QR scanning concludes.
+ */
+export function purgeImageMemory(
+  canvas?: HTMLCanvasElement | null,
+  img?: HTMLImageElement | null,
+  objectUrls?: readonly (string | null | undefined)[],
+): void {
+  if (canvas) {
+    try {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+      canvas.width = 0;
+      canvas.height = 0;
+    } catch {
+      // Non-blocking cleanup
+    }
+  }
+
+  if (img) {
+    try {
+      img.src = '';
+      img.onload = null;
+      img.onerror = null;
+    } catch {
+      // Non-blocking cleanup
+    }
+  }
+
+  if (objectUrls) {
+    for (const url of objectUrls) {
+      if (url && typeof url === 'string' && url.startsWith('blob:')) {
+        try {
+          URL.revokeObjectURL(url);
+        } catch {
+          // Non-blocking cleanup
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Labels indicating a merchant or recipient name.
+ */
+const MERCHANT_LABEL_REGEX =
+  /^(?:transfer\s*(?:to)?|recipient(?:\s*name)?|beneficiary(?:\s*name)?|paid\s*to|merchant(?:\s*name)?|biller(?:\s*name)?|bill\s*to|to|description|keterangan|penerima|nama\s*penerima|peniaga|bayar\s*kepada|kepada|transferred\s*to|payee)$/i;
+
+const MERCHANT_INLINE_REGEX =
+  /^(?:transfer\s*(?:to)?|recipient(?:\s*name)?|beneficiary(?:\s*name)?|paid\s*to|merchant(?:\s*name)?|biller(?:\s*name)?|bill\s*to|to|description|keterangan|penerima|nama\s*penerima|peniaga|bayar\s*kepada|kepada|transferred\s*to|payee)\s*[:\-]\s*(.+)$/i;
+
+/**
+ * Labels indicating an amount or total.
+ */
+const AMOUNT_LABEL_REGEX =
+  /^(?:amount|transfer\s*amount|total|jumlah|jumlah\s*bayaran|amaun|total\s*amount|grand\s*total|subtotal|net\s*amount)$/i;
+
+const AMOUNT_INLINE_REGEX =
+  /^(?:amount|transfer\s*amount|total|jumlah|jumlah\s*bayaran|amaun|total\s*amount|grand\s*total|subtotal|net\s*amount)\s*[:\-]\s*(.+)$/i;
+
+/**
+ * Labels indicating a transaction date or timestamp.
+ */
+const DATE_LABEL_REGEX =
+  /^(?:date|tarikh|transaction\s*date|tarikh\s*transaksi|date\s*&\s*time|tarikh\s*&\s*masa|payment\s*date|tarikh\s*bayaran)$/i;
+
+const DATE_INLINE_REGEX =
+  /^(?:date|tarikh|transaction\s*date|tarikh\s*transaksi|date\s*&\s*time|tarikh\s*&\s*masa|payment\s*date|tarikh\s*bayaran)\s*[:\-]\s*(.+)$/i;
+
+/**
+ * Deterministic Receipt & Mobile Bank Slip OCR Text Parser (§12 Privacy / §2.1 Deterministic).
  *
  * Extracts merchant names, dates (ISO / DD-MM-YYYY / 20 Aug 2026 / 12-hr AM/PM), and currency amounts (MYR)
- * from unstructured receipt and transaction slip OCR text (Touch 'n Go, MAE, DuitNow, CIMB OCTO, Bank Islam, RHB, etc.).
+ * from unstructured receipt and screenshot text (Touch 'n Go, MAE, DuitNow, CIMB OCTO, Bank Islam, RHB, etc.).
+ * Supports both inline key-value pairs (e.g. `Transfer To: Spotify`) and multi-line layouts (Label on line i, Value on line i+1).
  */
 export function parseReceiptLines(rawText: string): {
   readonly rows: readonly ImportRowSchema[];
@@ -32,35 +108,72 @@ export function parseReceiptLines(rawText: string): {
   for (let idx = 0; idx < rawLines.length; idx++) {
     const rawLine = rawLines[idx];
     const sanitizedLine = sanitizeText(rawLine);
+    const nextLine = idx + 1 < rawLines.length ? sanitizeText(rawLines[idx + 1]) : null;
 
-    // 1. Check for DuitNow / Malaysian Bank labeled merchant lines (MAE, CIMB, RHB, TnG, HLB)
-    const transferToMatch =
-      /^(?:transfer\s*(?:to)?|recipient(?:\s*name)?|beneficiary(?:\s*name)?|paid\s*to|merchant(?:\s*name)?|biller(?:\s*name)?|bill\s*to|to|description|keterangan|penerima)\s*[:\-]\s*(.+)$/i.exec(
-        sanitizedLine,
-      );
-    if (transferToMatch && transferToMatch[1].trim().length >= 2) {
-      const extracted = sanitizeMerchantName(transferToMatch[1]);
+    // 1. Check for merchant name (Inline format: "Recipient: Spotify" or Multi-line: "Recipient" -> "Spotify")
+    const merchantInlineMatch = MERCHANT_INLINE_REGEX.exec(sanitizedLine);
+    if (merchantInlineMatch && merchantInlineMatch[1].trim().length >= 2) {
+      const extracted = sanitizeMerchantName(merchantInlineMatch[1]);
       if (extracted && extracted.length >= 2) {
         candidateMerchant = extracted;
       }
+    } else if (MERCHANT_LABEL_REGEX.test(sanitizedLine) && nextLine && nextLine.length >= 2) {
+      if (!isBankHeaderOrNoise(nextLine) && !parseFlexibleDate(nextLine) && parseFlexibleAmount(nextLine) === null) {
+        const extracted = sanitizeMerchantName(nextLine);
+        if (extracted && extracted.length >= 2) {
+          candidateMerchant = extracted;
+          idx++; // Skip next line as we consumed it
+          continue;
+        }
+      }
     }
 
-    // 2. Check for date (flexible Malaysian format including 12h AM/PM)
-    const dateCandidate = parseFlexibleDate(sanitizedLine);
-    if (dateCandidate && !candidateDate) {
-      candidateDate = dateCandidate;
+    // 2. Check for amount (Inline: "Amount: RM 15.90" or Multi-line: "Amount" -> "RM 15.90" or direct amount)
+    const amountInlineMatch = AMOUNT_INLINE_REGEX.exec(sanitizedLine);
+    if (amountInlineMatch) {
+      const amt = parseFlexibleAmount(amountInlineMatch[1]);
+      if (amt !== null && amt > 0 && candidateAmountSen === null) {
+        candidateAmountSen = amt;
+      }
+    } else if (AMOUNT_LABEL_REGEX.test(sanitizedLine) && nextLine) {
+      const amt = parseFlexibleAmount(nextLine);
+      if (amt !== null && amt > 0 && candidateAmountSen === null) {
+        candidateAmountSen = amt;
+        idx++; // Skip next line as we consumed it
+        continue;
+      }
+    } else {
+      const amtCandidate = parseFlexibleAmount(sanitizedLine);
+      if (amtCandidate !== null && candidateAmountSen === null && amtCandidate > 0) {
+        candidateAmountSen = amtCandidate;
+      }
     }
 
-    // 3. Check for amount
-    const amountCandidate = parseFlexibleAmount(sanitizedLine);
-    if (amountCandidate !== null && candidateAmountSen === null && amountCandidate > 0) {
-      candidateAmountSen = amountCandidate;
+    // 3. Check for date (Inline: "Date: 20/08/2026" or Multi-line: "Date" -> "20/08/2026" or direct date)
+    const dateInlineMatch = DATE_INLINE_REGEX.exec(sanitizedLine);
+    if (dateInlineMatch) {
+      const dt = parseFlexibleDate(dateInlineMatch[1]);
+      if (dt && !candidateDate) {
+        candidateDate = dt;
+      }
+    } else if (DATE_LABEL_REGEX.test(sanitizedLine) && nextLine) {
+      const dt = parseFlexibleDate(nextLine);
+      if (dt && !candidateDate) {
+        candidateDate = dt;
+        idx++; // Skip next line as we consumed it
+        continue;
+      }
+    } else {
+      const dateCandidate = parseFlexibleDate(sanitizedLine);
+      if (dateCandidate && !candidateDate) {
+        candidateDate = dateCandidate;
+      }
     }
 
-    // 4. Check for merchant name fallback if not found via label
+    // 4. Fallback merchant extraction if not found via label
     if (!candidateMerchant && sanitizedLine.length >= 3 && !isBankHeaderOrNoise(sanitizedLine)) {
       const lower = sanitizedLine.toLowerCase();
-      const isGeneric =
+      const isNoise =
         lower.startsWith('date') ||
         lower.startsWith('tarikh') ||
         lower.startsWith('amount') ||
@@ -82,7 +195,7 @@ export function parseReceiptLines(rawText: string): {
         lower.startsWith('order id') ||
         lower.startsWith('trans id') ||
         lower.includes('ewallet') ||
-        lower.includes('touch \'n go') ||
+        lower.includes("touch 'n go") ||
         lower.includes('touch n go') ||
         lower.includes('maybank2u') ||
         lower.includes('cimb clicks') ||
@@ -92,7 +205,7 @@ export function parseReceiptLines(rawText: string): {
         lower.includes('instant transfer');
 
       if (
-        !isGeneric &&
+        !isNoise &&
         !parseFlexibleDate(sanitizedLine) &&
         parseFlexibleAmount(sanitizedLine) === null
       ) {
@@ -134,7 +247,7 @@ export function parseReceiptLines(rawText: string): {
     }
   }
 
-  // If standard line-by-line found 0 rows, run continuous text stream segmenter as fallback
+  // Fallback: If line-by-line found 0 rows, run continuous text stream segmenter
   if (rows.length === 0 && rawText.trim().length > 0) {
     const streamRows = extractTransactionsFromText(rawText);
     if (streamRows.length > 0) {
@@ -151,8 +264,6 @@ export function parseReceiptLines(rawText: string): {
   };
 }
 
-import jsQR from 'jsqr';
-
 /**
  * Parse standard EMVCo DuitNow QR payloads or payment URLs into structured transaction data.
  * Standard DuitNow QR: Tag 59 = Merchant Name, Tag 54 = Amount, Tag 53 = Currency (458 = MYR).
@@ -163,7 +274,7 @@ export function parseDuitNowQrPayload(payload: string): ImportRowSchema | null {
   let merchantName: string | null = null;
   let amountSen: number | null = null;
 
-  // 1. Recursive / stream EMVCo TLV parser (Tag-Length-Value)
+  // 1. Recursive EMVCo TLV parser (Tag-Length-Value)
   function parseTlv(str: string) {
     let idx = 0;
     while (idx < str.length - 4) {
@@ -181,7 +292,6 @@ export function parseDuitNowQrPayload(payload: string): ImportRowSchema | null {
       } else if (tag === '54') {
         amountSen = parseFlexibleAmount(val);
       } else if (['26', '27', '28', '62'].includes(tag)) {
-        // Parse nested sub-templates (e.g. Merchant Account Info or Additional Data)
         parseTlv(val);
       }
       idx += 4 + len;
@@ -190,7 +300,7 @@ export function parseDuitNowQrPayload(payload: string): ImportRowSchema | null {
 
   parseTlv(payload);
 
-  // 2. Regex fallback for non-standard EMVCo or nested tags
+  // 2. Regex fallback for non-standard EMVCo tags
   if (!merchantName) {
     const tag59Match = /59(\d{2})([A-Za-z0-9\s\-_.@*&]{2,50})/i.exec(payload);
     if (tag59Match) {
@@ -237,10 +347,10 @@ export function parseDuitNowQrPayload(payload: string): ImportRowSchema | null {
 
 /**
  * Preprocess image in browser memory using HTML5 Canvas:
- * 1. Automatically crops out phone status bars (battery/clock) and bottom action buttons on mobile screenshots.
- * 2. Scans for DuitNow QR codes with jsQR.
- * 3. Rescales to optimal OCR dimensions (max 1800px).
- * 4. Converts to Grayscale and inverts dark theme screenshots for maximum Tesseract OCR clarity.
+ * 1. Scans for embedded DuitNow QR codes with jsQR.
+ * 2. Rescales safely to optimal OCR resolution (max 2000px).
+ * 3. Applies non-destructive contrast stretching and dark mode inversion without clipping font anti-aliasing.
+ * 4. Strictly purges memory on completion or error (AGENTS.md §2.3 / §12).
  */
 async function preprocessImageForOcr(
   imageSource: File | Blob,
@@ -252,37 +362,35 @@ async function preprocessImageForOcr(
     return { processedBlob: imageSource, detectedQrRow: null }; // Server-side fallback
   }
 
+  let canvas: HTMLCanvasElement | null = null;
+  let img: HTMLImageElement | null = null;
+  let objectUrl: string | null = null;
+
   try {
-    const img = new Image();
-    const url = URL.createObjectURL(imageSource);
+    img = new Image();
+    objectUrl = URL.createObjectURL(imageSource);
 
     await new Promise<void>((resolve, reject) => {
+      if (!img) return reject(new Error('Image element null'));
       img.onload = () => resolve();
       img.onerror = () => reject(new Error('Failed to load image for canvas preprocessing'));
-      img.src = url;
+      img.src = objectUrl!;
     });
 
-    const canvas = document.createElement('canvas');
+    canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) {
-      URL.revokeObjectURL(url);
+      purgeImageMemory(canvas, img, [objectUrl]);
       return { processedBlob: imageSource, detectedQrRow: null };
     }
 
     const origWidth = img.width;
     const origHeight = img.height;
 
-    // Detect if this is a tall mobile screenshot (aspect ratio > 1.6)
-    const isMobileScreenshot = origHeight / origWidth > 1.6;
-
-    // Smart Crop: Skip top 6% (status bar / clock / battery) and bottom 8% (action buttons) on tall screenshots
-    const cropTop = isMobileScreenshot ? Math.round(origHeight * 0.06) : 0;
-    const cropBottom = isMobileScreenshot ? Math.round(origHeight * 0.08) : 0;
-    const croppedHeight = origHeight - cropTop - cropBottom;
-
-    const MAX_DIM = 1800;
+    // Rescale proportionally to optimal OCR dimensions (up to 2000px)
+    const MAX_DIM = 2000;
     let targetWidth = origWidth;
-    let targetHeight = croppedHeight;
+    let targetHeight = origHeight;
 
     if (targetWidth > MAX_DIM || targetHeight > MAX_DIM) {
       if (targetWidth > targetHeight) {
@@ -297,18 +405,7 @@ async function preprocessImageForOcr(
     canvas.width = targetWidth;
     canvas.height = targetHeight;
 
-    ctx.drawImage(
-      img,
-      0,
-      cropTop,
-      origWidth,
-      croppedHeight,
-      0,
-      0,
-      targetWidth,
-      targetHeight,
-    );
-    URL.revokeObjectURL(url);
+    ctx.drawImage(img, 0, 0, origWidth, origHeight, 0, 0, targetWidth, targetHeight);
 
     const imgData = ctx.getImageData(0, 0, targetWidth, targetHeight);
 
@@ -327,16 +424,20 @@ async function preprocessImageForOcr(
     let totalGray = 0;
     const pixelCount = targetWidth * targetHeight;
 
-    // First pass: grayscale and calculate average background brightness
+    // Pass 1: Compute average brightness
     for (let i = 0; i < data.length; i += 4) {
       const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
       totalGray += gray;
     }
 
     const avgBrightness = totalGray / pixelCount;
-    const isDarkTheme = avgBrightness < 120; // e.g. MAE dark mode or dark receipt
+    const isDarkTheme = avgBrightness < 110; // Dark mode screenshots (MAE, TnG dark theme)
 
-    // Second pass: grayscale + contrast stretch + inversion if dark mode
+    // Pass 2: Gentle contrast stretching without destructive hard clipping
+    const minVal = Math.max(0, avgBrightness - 85);
+    const maxVal = Math.min(255, avgBrightness + 85);
+    const range = maxVal - minVal || 1;
+
     for (let i = 0; i < data.length; i += 4) {
       let gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
 
@@ -344,19 +445,19 @@ async function preprocessImageForOcr(
         gray = 255 - gray; // Invert dark mode so text becomes dark on light
       }
 
-      // High contrast threshold stretch
-      if (gray > 200) gray = 255;
-      else if (gray < 70) gray = 0;
+      // Smooth contrast normalization keeping font anti-aliasing intact
+      let normalized = ((gray - minVal) / range) * 255;
+      normalized = Math.max(0, Math.min(255, normalized));
 
-      data[i] = gray;
-      data[i + 1] = gray;
-      data[i + 2] = gray;
+      data[i] = normalized;
+      data[i + 1] = normalized;
+      data[i + 2] = normalized;
     }
 
     ctx.putImageData(imgData, 0, 0);
 
     const processedBlob = await new Promise<Blob | null>((resolve) => {
-      canvas.toBlob((b) => resolve(b), 'image/png');
+      canvas?.toBlob((b) => resolve(b), 'image/png');
     });
 
     return {
@@ -365,14 +466,16 @@ async function preprocessImageForOcr(
     };
   } catch {
     return { processedBlob: imageSource, detectedQrRow: null };
+  } finally {
+    purgeImageMemory(canvas, img, [objectUrl]);
   }
 }
 
 /**
- * In-browser Image OCR recognizer using jsQR and Tesseract.js.
+ * In-browser Image OCR recognizer with zero-retention memory guarantees.
  *
  * Runs client-side in a WebAssembly worker without uploading raw user images
- * to external cloud services (AGENTS.md §2.3 Privacy by Design).
+ * to external cloud services (AGENTS.md §2.3 Privacy by Design / §12).
  */
 export async function recognizeReceiptImage(
   imageFile: File | Blob | string,
@@ -383,12 +486,13 @@ export async function recognizeReceiptImage(
   readonly rawLines: readonly string[];
 }> {
   let targetInput: File | Blob | string = imageFile;
+  let tempBlobUrl: string | null = null;
 
   if (typeof imageFile !== 'string') {
     const preprocessed = await preprocessImageForOcr(imageFile);
     targetInput = preprocessed.processedBlob;
 
-    // If DuitNow QR code with transaction details was decoded directly, return it immediately
+    // If DuitNow QR code with transaction details was decoded directly, return immediately
     if (preprocessed.detectedQrRow) {
       return {
         text: `DuitNow QR: ${preprocessed.detectedQrRow.merchantName} RM ${(preprocessed.detectedQrRow.amountSen / 100).toFixed(2)}`,
@@ -422,6 +526,17 @@ export async function recognizeReceiptImage(
       rawLines: parsed.rawLines,
     };
   } finally {
-    await worker.terminate();
+    try {
+      await worker.terminate();
+    } catch {
+      // Non-blocking
+    }
+    if (tempBlobUrl) {
+      try {
+        URL.revokeObjectURL(tempBlobUrl);
+      } catch {
+        // Non-blocking
+      }
+    }
   }
 }

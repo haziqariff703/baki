@@ -185,8 +185,14 @@ export function parseFlexibleDate(
  * - Multiple numbers on line (debit vs balance disambiguation)
  */
 export function parseFlexibleAmount(cellOrLine: string): number | null {
-  const normalized = cellOrLine.trim().replace(/,/g, '');
+  // Normalize OCR glitches (e.g. RMl5.90 -> RM15.90, -RM 15.90 -> RM 15.90)
+  let normalized = cellOrLine.trim().replace(/,/g, '');
   if (!normalized) return null;
+
+  // OCR Fix: Replace RMl or RMI or RM| with RM 1
+  normalized = normalized.replace(/\b(?:RM|MYR)\s*[lI|](\d+)/gi, 'RM 1$1');
+  // OCR Fix: Handle -RM or +RM prefix (common in TnG/MAE slips)
+  normalized = normalized.replace(/^[-+]\s*(?:RM|MYR)/i, 'RM');
 
   // 1. Trailing minus sign: e.g. 15.90- or 15.90 - (strongest indicator of debit expense)
   const trailingMinus = /(?:RM|MYR)?\s*(\d{1,7}\.\d{1,2})\s*[-–]/i.exec(normalized);
@@ -206,7 +212,7 @@ export function parseFlexibleAmount(cellOrLine: string): number | null {
     return myrToSen(parenMatch[1]);
   }
 
-  // 4. Currency prefix RM / MYR with whole or decimal amount (e.g. RM 60 or RM 15.90)
+  // 4. Currency prefix RM / MYR with whole or decimal amount (e.g. RM 60 or RM 15.90 or RM -15.90)
   const currencyMatch = /(?:RM|MYR)\s*[-–]?\s*(\d{1,7}(?:\.\d{1,2})?)/i.exec(normalized);
   if (currencyMatch) {
     return myrToSen(currencyMatch[1]);
