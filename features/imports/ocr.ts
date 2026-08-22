@@ -486,7 +486,6 @@ export async function recognizeReceiptImage(
   readonly rawLines: readonly string[];
 }> {
   let targetInput: File | Blob | string = imageFile;
-  let tempBlobUrl: string | null = null;
 
   if (typeof imageFile !== 'string') {
     const preprocessed = await preprocessImageForOcr(imageFile);
@@ -530,13 +529,6 @@ export async function recognizeReceiptImage(
       await worker.terminate();
     } catch {
       // Non-blocking
-    }
-    if (tempBlobUrl) {
-      try {
-        URL.revokeObjectURL(tempBlobUrl);
-      } catch {
-        // Non-blocking
-      }
     }
   }
 }
