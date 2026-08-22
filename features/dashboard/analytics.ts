@@ -190,10 +190,6 @@ export function renewalForecast(
     }));
 }
 
-/* -------------------------------------------------------------------------- */
-/*  Spending trend (fixed synthetic series)                                    */
-/* -------------------------------------------------------------------------- */
-
 export interface TrendPoint {
   /** Short label, e.g. 'Mar'. Language-independent month abbreviations. */
   readonly label: string;
@@ -201,28 +197,81 @@ export interface TrendPoint {
 }
 
 /**
- * Recent monthly-commitment trend. Deterministic: the final point is the live
- * engine-computed monthly commitment; the preceding points are a fixed
- * synthetic fixture series (no randomness, no Date) so the chart renders the
- * same every load. This is display data, not a financial computation.
+ * Computes calendar-accurate 12-month spending trend points based on real transactions & subscriptions.
+ *
+ * 1. Dynamically generates rolling 12 calendar month labels (e.g. ['Sep', 'Oct', ..., 'Aug']).
+ * 2. If transactions exist, groups actual debit totals by YYYY-MM.
+ * 3. If new user with 0 commitment, returns flat 0 sen (Delta = MYR 0.00 / 0.0%).
+ */
+export function buildSpendingTrend(
+  currentMonthlySen: MoneyInSen,
+  transactions: readonly { readonly transactionDate: string; readonly amountSen: number }[] = [],
+  referenceDate: Date = new Date(),
+): readonly TrendPoint[] {
+  const refYear = referenceDate.getUTCFullYear();
+  const refMonth = referenceDate.getUTCMonth();
+
+  const months: { readonly key: string; readonly label: string }[] = [];
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(Date.UTC(refYear, refMonth - i, 1));
+    const year = d.getUTCFullYear();
+    const monthNum = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const key = `${year}-${monthNum}`;
+    const label = d.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' });
+    months.push({ key, label });
+  }
+
+  const txByMonth = new Map<string, number>();
+  let hasHistoricalTx = false;
+
+  for (const tx of transactions) {
+    if (!tx.transactionDate || !tx.amountSen) continue;
+    const monthKey = tx.transactionDate.slice(0, 7);
+    const prev = txByMonth.get(monthKey) ?? 0;
+    txByMonth.set(monthKey, prev + Math.max(0, tx.amountSen));
+    hasHistoricalTx = true;
+  }
+
+  if (currentMonthlySen === 0 && !hasHistoricalTx) {
+    return months.map((m) => ({
+      label: m.label,
+      monthlySen: 0,
+    }));
+  }
+
+  return months.map((m, idx) => {
+    const isCurrent = idx === months.length - 1;
+    const txTotal = txByMonth.get(m.key);
+
+    if (txTotal !== undefined) {
+      return {
+        label: m.label,
+        monthlySen: isCurrent ? Math.max(txTotal, currentMonthlySen) : txTotal,
+      };
+    }
+
+    if (hasHistoricalTx) {
+      return {
+        label: m.label,
+        monthlySen: isCurrent ? currentMonthlySen : 0,
+      };
+    }
+
+    return {
+      label: m.label,
+      monthlySen: currentMonthlySen,
+    };
+  });
+}
+
+/**
+ * Legacy wrapper for synthetic fixtures.
  */
 export function spendingTrend(
   currentMonthlySen: MoneyInSen,
 ): readonly TrendPoint[] {
-  const history: readonly MoneyInSen[] = [
-    245400, 261800, 253900, 288100, 290400,
-  ];
-  return [
-    ...history.map((monthlySen, i) => ({
-      label: TREND_MONTH_LABELS[i] ?? '',
-      monthlySen,
-    })),
-    { label: TREND_MONTH_LABELS[TREND_MONTH_LABELS.length - 1], monthlySen: currentMonthlySen },
-  ];
+  return buildSpendingTrend(currentMonthlySen);
 }
-
-/** Fixed trailing-month labels ending at the current month (en abbreviations). */
-const TREND_MONTH_LABELS = ['Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug'] as const;
 
 /* -------------------------------------------------------------------------- */
 /*  Alerts                                                                     */

@@ -15,21 +15,17 @@ import { useTranslations } from 'next-intl';
 import { TrendingUp, ArrowUpRight, ArrowDownRight, Minus, History } from 'lucide-react';
 import { TrendSparkline } from '@/components/dashboard/TrendSparkline';
 import { CardActionMenu } from '@/components/ui/CardActionMenu';
-import type { TrendPoint } from '@/features/dashboard/analytics';
+import { buildSpendingTrend, type TrendPoint } from '@/features/dashboard/analytics';
 import { senToMyr } from '@/lib/money';
 
 interface SpendingTrendCardProps {
   readonly currentMonthlySen: number;
+  readonly points?: readonly TrendPoint[];
 }
 
 type TrendRange = '3m' | '6m' | '12m';
 
-const TWELVE_MONTH_LABELS = [
-  'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb',
-  'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug',
-] as const;
-
-export function SpendingTrendCard({ currentMonthlySen }: SpendingTrendCardProps) {
+export function SpendingTrendCard({ currentMonthlySen, points }: SpendingTrendCardProps) {
   const t = useTranslations('Dashboard');
   const [range, setRange] = useState<TrendRange>('6m');
 
@@ -65,22 +61,14 @@ export function SpendingTrendCard({ currentMonthlySen }: SpendingTrendCardProps)
   ];
 
   const allPoints: readonly TrendPoint[] = useMemo(() => {
-    // Deterministic 12-month synthetic history ending at the current monthly commitment
-    const fullHistory = [
-      210000, 218500, 225000, 239000, 240000, 235000,
-      245400, 261800, 253900, 288100, 290400, currentMonthlySen,
-    ];
-
-    return fullHistory.map((monthlySen, i) => ({
-      label: TWELVE_MONTH_LABELS[i] ?? '',
-      monthlySen,
-    }));
-  }, [currentMonthlySen]);
+    if (points && points.length > 0) return points;
+    return buildSpendingTrend(currentMonthlySen);
+  }, [points, currentMonthlySen]);
 
   const activePoints = useMemo(() => {
     if (range === '3m') return allPoints.slice(-3);
     if (range === '6m') return allPoints.slice(-6);
-    return allPoints;
+    return allPoints.slice(-12);
   }, [allPoints, range]);
 
   const latest = activePoints[activePoints.length - 1]?.monthlySen ?? currentMonthlySen;
@@ -89,7 +77,12 @@ export function SpendingTrendCard({ currentMonthlySen }: SpendingTrendCardProps)
       ? activePoints[activePoints.length - 2].monthlySen
       : latest;
   const delta = latest - previous;
-  const deltaPct = previous > 0 ? ((delta / previous) * 100).toFixed(1) : '0.0';
+  const deltaPct =
+    previous > 0
+      ? ((delta / previous) * 100).toFixed(1)
+      : latest > 0
+        ? '+100.0'
+        : '0.0';
 
   // Minimalist Summary Numbers
   const values = activePoints.map((p) => p.monthlySen);

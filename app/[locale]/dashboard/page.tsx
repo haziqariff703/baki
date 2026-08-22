@@ -26,6 +26,7 @@ import {
   averageScore,
   buildAlerts,
   buildScoredSubscriptions,
+  buildSpendingTrend,
   savingsOpportunities,
   scoreDistribution,
   spendingByCategory,
@@ -48,6 +49,7 @@ import { syntheticCandidates } from '@/tests/fixtures/candidates';
 import { createClient } from '@/lib/supabase/server';
 import { SupabaseSubscriptionRepository } from '@/features/subscriptions/repository';
 import { SupabaseRecurringCandidateRepository } from '@/features/recurring-detection/repository';
+import { SupabaseTransactionRepository } from '@/features/transactions';
 
 /**
  * JIRA-style dashboard (Overview). Server-rendered for speed (§17): all
@@ -63,6 +65,7 @@ export default async function DashboardPage() {
 
   let initialSubscriptions: any[] = [];
   let candidates: any[] = [];
+  let userTransactions: any[] = [];
   let availableBalanceSen = 0;
   let isStudent = false;
   let userEmail: string | undefined = undefined;
@@ -81,6 +84,10 @@ export default async function DashboardPage() {
       const candRepo = new SupabaseRecurringCandidateRepository(supabase);
       const userCands = await candRepo.list(user.id);
       candidates = (userCands ?? []) as any[];
+
+      const txRepo = new SupabaseTransactionRepository(supabase);
+      const txs = await txRepo.list(user.id);
+      userTransactions = (txs ?? []) as any[];
 
       const { data: profile } = await supabase
         .from('profiles')
@@ -135,6 +142,11 @@ export default async function DashboardPage() {
     realRenewals,
     SYNTHETIC_TODAY,
     summary.safeToSpendSen,
+  );
+  const trendPoints = buildSpendingTrend(
+    summary.monthlyCommitmentSen,
+    userTransactions,
+    new Date(),
   );
 
 
@@ -286,7 +298,10 @@ export default async function DashboardPage() {
 
           {/* Trend + Spending + Score distribution */}
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-            <SpendingTrendCard currentMonthlySen={summary.monthlyCommitmentSen} />
+            <SpendingTrendCard
+              currentMonthlySen={summary.monthlyCommitmentSen}
+              points={trendPoints}
+            />
 
             <SpendingDonutCard
               slices={spendSlices}
