@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseReceiptLines } from '@/features/imports/ocr';
+import { parseReceiptLines, parseDuitNowQrPayload } from '@/features/imports/ocr';
 
 describe('Receipt OCR Text Parser (§12 / §2.1)', () => {
   it('parses Touch n Go eWallet subscription slip text', () => {
@@ -143,5 +143,97 @@ describe('Receipt OCR Text Parser (§12 / §2.1)', () => {
     expect(parseReceiptLines('').rows.length).toBe(0);
     expect(parseReceiptLines('Just random text with no amount or date').rows.length).toBe(0);
   });
+
+  it('decodes DuitNow EMVCo QR code payloads directly', () => {
+    const emvcoPayload =
+      '00020101021226580014A00000072700200112123456789012520459995303458540515.905802MY5916Spotify Malaysia6012Kuala Lumpur';
+    const parsed = parseDuitNowQrPayload(emvcoPayload);
+    expect(parsed).not.toBeNull();
+    expect(parsed?.merchantName.toLowerCase()).toContain('spotify');
+    expect(parsed?.amountSen).toBe(1590);
+  });
+
+  it('parses multi-line bank slips where labels and values are on separate lines', () => {
+    const rawText = `
+      Transfer To
+      Spotify Malaysia Sdn Bhd
+      Amount
+      RM 15.90
+      Date
+      20/08/2026
+      Status
+      Successful
+    `;
+
+    const result = parseReceiptLines(rawText);
+    expect(result.rows.length).toBeGreaterThanOrEqual(1);
+    const row = result.rows[0];
+    expect(row.merchantName.toLowerCase()).toContain('spotify');
+    expect(row.amountSen).toBe(1590);
+    expect(row.transactionDate.slice(0, 10)).toBe('2026-08-20');
+  });
+
+  it('parses Malay language mobile screenshots with multi-line layout', () => {
+    const rawText = `
+      Penerima
+      Netflix International B.V.
+      Jumlah Bayaran
+      RM 54.90
+      Tarikh & Masa
+      20 Ogos 2026 14:30
+      Status
+      Berjaya
+    `;
+
+    const result = parseReceiptLines(rawText);
+    expect(result.rows.length).toBeGreaterThanOrEqual(1);
+    const row = result.rows[0];
+    expect(row.merchantName.toLowerCase()).toContain('netflix');
+    expect(row.amountSen).toBe(5490);
+    expect(row.transactionDate.slice(0, 10)).toBe('2026-08-20');
+  });
+
+  it('fixes common OCR character misrecognitions in amounts (l, I, | instead of 1)', () => {
+    const rawText = `
+      Touch 'n Go eWallet
+      Merchant: Adobe Creative Cloud
+      Amount: RMl49.90
+      Date: 2026-08-20
+    `;
+
+    const result = parseReceiptLines(rawText);
+    expect(result.rows.length).toBeGreaterThanOrEqual(1);
+    const row = result.rows[0];
+    expect(row.merchantName.toLowerCase()).toContain('adobe');
+    expect(row.amountSen).toBe(14990);
+  });
+
+  it('parses Maybank MAE DuitNow screenshot with minus sign and colon-less format', () => {
+    const rawText = `
+      MAE by Maybank2u
+      DuitNow Transfer
+      Penerima: OpenAI ChatGPT Plus
+      -RM 94.90
+      22 Ogos 2026, 09:15 AM
+      Rujukan: AI Sub
+      Berjaya
+    `;
+
+    const result = parseReceiptLines(rawText);
+    expect(result.rows.length).toBeGreaterThanOrEqual(1);
+    const row = result.rows[0];
+    expect(row.merchantName.toLowerCase()).toContain('chatgpt');
+    expect(row.amountSen).toBe(9490);
+    expect(row.transactionDate.slice(0, 10)).toBe('2026-08-22');
+  });
+
+  it('decodes payment URL QR codes with query parameters', () => {
+    const urlQr = 'https://duitnow.my/pay?to=Netflix%20Malaysia&amt=55.00&ref=SUB123';
+    const parsed = parseDuitNowQrPayload(urlQr);
+    expect(parsed).not.toBeNull();
+    expect(parsed?.merchantName.toLowerCase()).toContain('netflix');
+    expect(parsed?.amountSen).toBe(5500);
+  });
 });
+
 

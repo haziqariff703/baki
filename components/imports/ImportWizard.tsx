@@ -174,6 +174,8 @@ export function ImportWizard() {
           const result = await recognizeReceiptImage(file, (pct) => {
             setOcrProgress(pct);
           });
+          // Zero-Retention Purge (§2.3 / §12): Discard raw File reference from memory immediately
+          fileRef.current = null;
           setStatus({
             state: 'done',
             fileName,
@@ -186,6 +188,7 @@ export function ImportWizard() {
             },
           });
         } catch {
+          fileRef.current = null;
           setStatus({
             state: 'error',
             message: 'Could not read receipt image. Please ensure image has good lighting or paste the text directly.',
