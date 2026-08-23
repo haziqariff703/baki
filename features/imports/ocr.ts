@@ -83,6 +83,100 @@ const DATE_LABEL_REGEX =
 const DATE_INLINE_REGEX =
   /^(?:date|tarikh|transaction\s*date|tarikh\s*transaksi|date\s*&\s*time|tarikh\s*&\s*masa|payment\s*date|tarikh\s*bayaran)\s*[:\-]\s*(.+)$/i;
 
+const INCOMING_RECEIPT_REGEX =
+  /\b(?:transfer\s+from|transferred\s+from|duitnow[_\s]+recei(?:v\w*)?|received\s+from)\b/i;
+
+const STATEMENT_LAYOUT_REGEX = /\b(?:transaction\s+history|account\s+transactions|statement)\b/i;
+const STATEMENT_DATE_REGEX =
+  /\b(?:\d{4}[/-]\d{1,2}[/-]\d{1,2}|\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?)\b/g;
+const DEBIT_SIGN_REGEX = /(?:\d[\d,]*\.\d{2}\s*[-–]|\b(?:DR|DEBIT)\b)/i;
+const CREDIT_SIGN_REGEX = /(?:\d[\d,]*\.\d{2}\s*\+|\bCR\b)/i;
+
+function normalizeOcrAmountText(line: string): string {
+  const amountNormalized = line.replace(
+    /\b(MYR|RM)\s*([0-9OIl|]+(?:[.,][0-9OIl|]{1,2})?)/gi,
+    (_match, currency: string, value: string) =>
+      `${currency} ${value.replace(/[Oo]/g, '0').replace(/[Il|]/g, '1').replace(',', '.')}`,
+  );
+
+  return amountNormalized.replace(
+    /\b([SOIl|])\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b/gi,
+    (_match, digit: string, month: string) =>
+      `${digit.toLowerCase() === 's' ? '5' : digit.toLowerCase() === 'o' ? '0' : '1'} ${month}`,
+  );
+}
+
+function isIncomingTransactionText(text: string): boolean {
+  if (DEBIT_SIGN_REGEX.test(text)) return false;
+  if (CREDIT_SIGN_REGEX.test(text)) return true;
+  return INCOMING_RECEIPT_REGEX.test(text);
+}
+
+function extractOcrStatementRows(rawText: string): readonly ImportRowSchema[] | null {
+  const headerMatch = STATEMENT_LAYOUT_REGEX.exec(rawText);
+  const statementText = headerMatch ? rawText.slice(headerMatch.index) : rawText;
+  const dateMatches = [...statementText.matchAll(STATEMENT_DATE_REGEX)];
+
+  if (!headerMatch && dateMatches.length < 2) return null;
+
+  const rows: ImportRowSchema[] = [];
+  for (let index = 0; index < dateMatches.length; index += 1) {
+    const start = dateMatches[index].index ?? 0;
+    const end = dateMatches[index + 1]?.index ?? statementText.length;
+    const block = statementText.slice(start, end);
+    if (isIncomingTransactionText(block)) continue;
+    rows.push(...extractTransactionsFromText(block));
+  }
+
+  return rows;
+}
+
+function reconstructTsvText(tsv: string | null | undefined): string {
+  if (!tsv) return '';
+
+  const words = tsv
+    .split(/\r?\n/)
+    .slice(1)
+    .map((row) => row.split('\t'))
+    .filter((columns) => columns.length >= 12 && columns[0] === '5')
+    .map((columns) => ({
+      x: Number(columns[6]),
+      y: Number(columns[7]) + Number(columns[9]) / 2,
+      height: Number(columns[9]),
+      text: columns.slice(11).join('\t').trim(),
+    }))
+    .filter(
+      (word) =>
+        word.text.length > 0 &&
+        Number.isFinite(word.x) &&
+        Number.isFinite(word.y) &&
+        Number.isFinite(word.height),
+    )
+    .sort((a, b) => a.y - b.y || a.x - b.x);
+
+  const lines: { y: number; height: number; words: typeof words }[] = [];
+  for (const word of words) {
+    const line = lines.at(-1);
+    const tolerance = line ? Math.max(8, Math.min(line.height, word.height) * 0.6) : 0;
+    if (line && Math.abs(line.y - word.y) <= tolerance) {
+      line.words.push(word);
+      line.y = (line.y + word.y) / 2;
+      line.height = Math.max(line.height, word.height);
+    } else {
+      lines.push({ y: word.y, height: word.height, words: [word] });
+    }
+  }
+
+  return lines
+    .map((line) =>
+      line.words
+        .sort((a, b) => a.x - b.x)
+        .map((word) => word.text)
+        .join(' '),
+    )
+    .join('\n');
+}
+
 /**
  * Deterministic Receipt & Mobile Bank Slip OCR Text Parser (§12 Privacy / §2.1 Deterministic).
  *
@@ -99,6 +193,16 @@ export function parseReceiptLines(rawText: string): {
     .map((l) => l.trim())
     .filter((l) => l.length > 0);
 
+  const statementRows = extractOcrStatementRows(rawText);
+  if (statementRows) {
+    return { rows: statementRows, rawLines };
+  }
+
+  // A standalone incoming transfer is not a subscription expense.
+  if (isIncomingTransactionText(rawText)) {
+    return { rows: [], rawLines };
+  }
+
   const rows: ImportRowSchema[] = [];
 
   let candidateDate: string | null = null;
@@ -107,8 +211,11 @@ export function parseReceiptLines(rawText: string): {
 
   for (let idx = 0; idx < rawLines.length; idx++) {
     const rawLine = rawLines[idx];
-    const sanitizedLine = sanitizeText(rawLine);
-    const nextLine = idx + 1 < rawLines.length ? sanitizeText(rawLines[idx + 1]) : null;
+    const sanitizedLine = normalizeOcrAmountText(sanitizeText(rawLine));
+    const nextLine =
+      idx + 1 < rawLines.length
+        ? normalizeOcrAmountText(sanitizeText(rawLines[idx + 1]))
+        : null;
 
     // 1. Check for merchant name (Inline format: "Recipient: Spotify" or Multi-line: "Recipient" -> "Spotify")
     const merchantInlineMatch = MERCHANT_INLINE_REGEX.exec(sanitizedLine);
@@ -387,24 +494,25 @@ async function preprocessImageForOcr(
     const origWidth = img.width;
     const origHeight = img.height;
 
-    // Rescale proportionally to optimal OCR dimensions (up to 2000px)
-    const MAX_DIM = 2000;
+    // Bring small screenshots up to OCR resolution and cap large camera images.
+    const TARGET_LONG_DIM = 2000;
+    const MAX_DIM = 2400;
     let targetWidth = origWidth;
     let targetHeight = origHeight;
 
-    if (targetWidth > MAX_DIM || targetHeight > MAX_DIM) {
-      if (targetWidth > targetHeight) {
-        targetHeight = Math.round((targetHeight * MAX_DIM) / targetWidth);
-        targetWidth = MAX_DIM;
-      } else {
-        targetWidth = Math.round((targetWidth * MAX_DIM) / targetHeight);
-        targetHeight = MAX_DIM;
-      }
+    const longestSide = Math.max(origWidth, origHeight);
+    if (longestSide > 0 && longestSide !== TARGET_LONG_DIM) {
+      const targetLongestSide = Math.min(MAX_DIM, Math.max(TARGET_LONG_DIM, longestSide));
+      const scale = targetLongestSide / longestSide;
+      targetWidth = Math.max(1, Math.round(origWidth * scale));
+      targetHeight = Math.max(1, Math.round(origHeight * scale));
     }
 
     canvas.width = targetWidth;
     canvas.height = targetHeight;
 
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(img, 0, 0, origWidth, origHeight, 0, 0, targetWidth, targetHeight);
 
     const imgData = ctx.getImageData(0, 0, targetWidth, targetHeight);
@@ -505,24 +613,75 @@ export async function recognizeReceiptImage(
     }
   }
 
-  const { createWorker } = await import('tesseract.js');
+  const { createWorker, PSM } = await import('tesseract.js');
+  let recognitionPass = 0;
   const worker = await createWorker('eng', 1, {
+    workerPath: '/tesseract/worker.min.js',
+    corePath: '/tesseract',
+    langPath: '/tesseract',
+    gzip: false,
     logger: (m) => {
       if (m.status === 'recognizing text' && typeof m.progress === 'number' && onProgress) {
-        onProgress(Math.round(m.progress * 100));
+        onProgress(
+          recognitionPass === 0
+            ? Math.round(m.progress * 60)
+            : 60 + Math.round(m.progress * 40),
+        );
       }
     },
   });
 
   try {
-    const ret = await worker.recognize(targetInput);
-    const text = ret.data.text ?? '';
-    const parsed = parseReceiptLines(text);
+    await worker.setParameters({
+      tessedit_pageseg_mode: PSM.AUTO,
+      preserve_interword_spaces: '1',
+      user_defined_dpi: '300',
+    });
+    const primary = await worker.recognize(
+      targetInput,
+      { rotateAuto: true },
+      { text: true, tsv: true },
+    );
+
+    const primaryTexts = [primary.data.text ?? '', reconstructTsvText(primary.data.tsv)];
+    let best = primaryTexts
+      .map((text) => ({ text, parsed: parseReceiptLines(text) }))
+      .sort((a, b) => b.parsed.rows.length - a.parsed.rows.length)[0];
+    let bestConfidence = primary.data.confidence ?? 0;
+
+    if (best.parsed.rows.length === 0 && !isIncomingTransactionText(best.text)) {
+      recognitionPass = 1;
+      await worker.setParameters({
+        tessedit_pageseg_mode: PSM.SPARSE_TEXT,
+        preserve_interword_spaces: '1',
+        user_defined_dpi: '300',
+      });
+      const fallback = await worker.recognize(
+        targetInput,
+        { rotateAuto: true },
+        { text: true, tsv: true },
+      );
+      const fallbackBest = [fallback.data.text ?? '', reconstructTsvText(fallback.data.tsv)]
+        .map((text) => ({ text, parsed: parseReceiptLines(text) }))
+        .sort((a, b) => b.parsed.rows.length - a.parsed.rows.length)[0];
+      const fallbackConfidence = fallback.data.confidence ?? 0;
+
+      if (
+        fallbackBest.parsed.rows.length > best.parsed.rows.length ||
+        (fallbackBest.parsed.rows.length === best.parsed.rows.length &&
+          fallbackConfidence > bestConfidence)
+      ) {
+        best = fallbackBest;
+        bestConfidence = fallbackConfidence;
+      }
+    }
+
+    onProgress?.(100);
 
     return {
-      text,
-      rows: parsed.rows,
-      rawLines: parsed.rawLines,
+      text: best.text,
+      rows: best.parsed.rows,
+      rawLines: best.parsed.rawLines,
     };
   } finally {
     try {

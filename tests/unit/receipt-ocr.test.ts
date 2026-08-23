@@ -1,5 +1,24 @@
-import { describe, it, expect } from 'vitest';
-import { parseReceiptLines, parseDuitNowQrPayload } from '@/features/imports/ocr';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
+import {
+  parseReceiptLines,
+  parseDuitNowQrPayload,
+  recognizeReceiptImage,
+} from '@/features/imports/ocr';
+
+const tesseractMocks = vi.hoisted(() => ({
+  createWorker: vi.fn(),
+  recognize: vi.fn(),
+  setParameters: vi.fn(),
+  terminate: vi.fn(),
+}));
+
+vi.mock('tesseract.js', () => ({
+  createWorker: tesseractMocks.createWorker,
+  PSM: {
+    AUTO: '3',
+    SPARSE_TEXT: '11',
+  },
+}));
 
 describe('Receipt OCR Text Parser (§12 / §2.1)', () => {
   it('parses Touch n Go eWallet subscription slip text', () => {
@@ -233,6 +252,157 @@ describe('Receipt OCR Text Parser (§12 / §2.1)', () => {
     expect(parsed).not.toBeNull();
     expect(parsed?.merchantName.toLowerCase()).toContain('netflix');
     expect(parsed?.amountSen).toBe(5500);
+  });
+
+  it('normalizes OCR-confused zeroes in labelled MYR amounts', () => {
+    const result = parseReceiptLines(`
+      Merchant Name: Example Mobile
+      Amount: RM6.OO
+      Date: 5 Jul 2026, 9:39 PM
+      Successful
+    `);
+
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0]).toMatchObject({
+      merchantName: 'Example Mobile',
+      amountSen: 600,
+    });
+    expect(result.rows[0].transactionDate.slice(0, 10)).toBe('2026-07-05');
+  });
+
+  it('normalizes an OCR-confused leading digit in a month-name date', () => {
+    const result = parseReceiptLines(`
+      Merchant Name: Example Mobile
+      Amount: RM 3.00
+      Date: S Jul 2026, 9:39 PM
+    `);
+
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].transactionDate.slice(0, 10)).toBe('2026-07-05');
+  });
+
+  it('does not turn an incoming person-to-person receipt into a subscription transaction', () => {
+    const result = parseReceiptLines(`
+      Example Bank
+      21 Jul 2026, 08:04 PM
+      Amount: RM 6.00
+      Successful
+      Transfer from
+      SAMPLE PERSON
+      DuitNow QR
+    `);
+
+    expect(result.rows).toEqual([]);
+  });
+
+  it('keeps outgoing statement rows and excludes incoming rows using amount signs first', () => {
+    const result = parseReceiptLines(`
+      ACCOUNT TRANSACTIONS
+      01/07/26 SAMPLE COFFEE PAYMENT RM 3.20- 2.85
+      03/07/26 TRANSFER FROM A/C SAMPLE PERSON RM 5.00+ 7.85
+    `);
+
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].amountSen).toBe(320);
+    expect(result.rows[0].transactionDate.slice(0, 10)).toBe('2026-07-01');
+  });
+
+  it('excludes wrapped TNG incoming markers reconstructed from table OCR', () => {
+    const result = parseReceiptLines(`
+      TRANSACTION HISTORY
+      05/06/2026 Success DUITNOW_RECEI VEFROM SAMPLE PERSON RM2.20 RM2.20
+      06/06/2026 Success DUITNOW QR SAMPLE MERCHANT RM1.80 RM0.40
+    `);
+
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].amountSen).toBe(180);
+    expect(result.rows[0].transactionDate.slice(0, 10)).toBe('2026-06-06');
+  });
+});
+
+describe('Receipt image recognizer lifecycle', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it('uses self-hosted OCR assets and always terminates its worker', async () => {
+    tesseractMocks.recognize.mockResolvedValueOnce({
+      data: {
+        text: 'Merchant: Example Mobile\nAmount: RM 6.00\nDate: 2026-07-05',
+      },
+    });
+    tesseractMocks.setParameters.mockResolvedValueOnce(undefined);
+    tesseractMocks.terminate.mockResolvedValueOnce(undefined);
+    tesseractMocks.createWorker.mockResolvedValueOnce({
+      recognize: tesseractMocks.recognize,
+      setParameters: tesseractMocks.setParameters,
+      terminate: tesseractMocks.terminate,
+    });
+
+    const result = await recognizeReceiptImage('synthetic-receipt.png');
+
+    expect(tesseractMocks.createWorker).toHaveBeenCalledWith(
+      'eng',
+      1,
+      expect.objectContaining({
+        workerPath: '/tesseract/worker.min.js',
+        corePath: '/tesseract',
+        langPath: '/tesseract',
+        gzip: false,
+      }),
+    );
+    expect(tesseractMocks.setParameters).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tessedit_pageseg_mode: '3',
+        preserve_interword_spaces: '1',
+        user_defined_dpi: '300',
+      }),
+    );
+    expect(result.rows).toHaveLength(1);
+    expect(tesseractMocks.terminate).toHaveBeenCalledOnce();
+  });
+
+  it('retries once with sparse text when the primary pass finds no eligible row', async () => {
+    tesseractMocks.recognize
+      .mockResolvedValueOnce({ data: { text: 'unreadable', confidence: 20 } })
+      .mockResolvedValueOnce({
+        data: {
+          text: 'Merchant: Example Mobile\nAmount: RM 6.00\nDate: 2026-07-05',
+          confidence: 80,
+        },
+      });
+    tesseractMocks.setParameters.mockResolvedValue(undefined);
+    tesseractMocks.terminate.mockResolvedValueOnce(undefined);
+    tesseractMocks.createWorker.mockResolvedValueOnce({
+      recognize: tesseractMocks.recognize,
+      setParameters: tesseractMocks.setParameters,
+      terminate: tesseractMocks.terminate,
+    });
+
+    const result = await recognizeReceiptImage('synthetic-receipt.png');
+
+    expect(tesseractMocks.recognize).toHaveBeenCalledTimes(2);
+    expect(tesseractMocks.setParameters).toHaveBeenLastCalledWith(
+      expect.objectContaining({ tessedit_pageseg_mode: '11' }),
+    );
+    expect(result.rows).toHaveLength(1);
+    expect(tesseractMocks.terminate).toHaveBeenCalledOnce();
+  });
+
+  it('terminates its worker when recognition fails', async () => {
+    tesseractMocks.recognize.mockRejectedValueOnce(new Error('recognition failed'));
+    tesseractMocks.setParameters.mockResolvedValueOnce(undefined);
+    tesseractMocks.terminate.mockResolvedValueOnce(undefined);
+    tesseractMocks.createWorker.mockResolvedValueOnce({
+      recognize: tesseractMocks.recognize,
+      setParameters: tesseractMocks.setParameters,
+      terminate: tesseractMocks.terminate,
+    });
+
+    await expect(recognizeReceiptImage('synthetic-receipt.png')).rejects.toThrow(
+      'recognition failed',
+    );
+    expect(tesseractMocks.terminate).toHaveBeenCalledOnce();
   });
 });
 
