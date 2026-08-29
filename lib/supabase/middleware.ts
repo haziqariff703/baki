@@ -1,5 +1,6 @@
-import { createServerClient } from '@supabase/ssr';
+import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
+import { logOperational } from '@/lib/logging';
 
 const PROTECTED_PREFIXES = [
   '/dashboard',
@@ -21,7 +22,7 @@ export async function updateSession(request: NextRequest, response: NextResponse
       return response;
     }
 
-    let cookiesToSetOnResponse: { name: string; value: string; options?: any }[] = [];
+    let cookiesToSetOnResponse: { name: string; value: string; options?: CookieOptions }[] = [];
 
     const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
       cookies: {
@@ -66,8 +67,8 @@ export async function updateSession(request: NextRequest, response: NextResponse
     );
 
     return response;
-  } catch (error) {
-    console.error('[Middleware] Supabase session error:', error);
+  } catch {
+    logOperational({ level: 'error', message: 'session refresh failed' });
     return response;
   }
 }

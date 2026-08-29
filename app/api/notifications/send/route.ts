@@ -5,16 +5,20 @@ import { SupabaseProfileRepository } from '@/features/settings/repository';
 import { generateRenewalNotifications } from '@/features/notifications/logic';
 import { buildRenewalEmailHtml, sendEmailNotification } from '@/lib/email';
 import { syntheticSubscriptions } from '@/tests/fixtures/subscriptions';
-import { checkRateLimit, getClientIp } from '@/lib/security/rate-limit';
+import { checkRateLimit } from '@/lib/security/rate-limit';
+import { requireUser } from '@/lib/auth';
+import { toErrorResponse } from '@/lib/api';
+import { z } from 'zod';
+
+const notificationRequestSchema = z.object({ forceTest: z.boolean().optional() }).strict();
 
 /**
  * Dispatch Email Notifications Route (§11 / §2.3 / £Ĵ.1).
  */
 export async function POST(req: Request) {
   try {
-    // Rate limit check: max 10 notification dispatches per minute per user/IP
-    const ip = getClientIp(req);
-    const rateLimit = checkRateLimit(`notify:${ip}`, { limit: 10, windowSeconds: 60 });
+    const user = await requireUser();
+    const rateLimit = checkRateLimit(`notify:${user.id}`, { limit: 10, windowSeconds: 60 });
     if (!rateLimit.allowed) {
       return NextResponse.json(
         {
@@ -29,45 +33,36 @@ export async function POST(req: Request) {
     }
 
     const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
     let subscriptions = syntheticSubscriptions;
     let reminderDays = 3;
     let recipientEmail = 'user@example.com';
     let recipientName = 'there';
 
-    const body = await req.json().catch(() => ({}));
+    const body: unknown = await req.json().catch(() => null);
+    const input = notificationRequestSchema.parse(body ?? {});
 
-    if (user) {
-      const subRepo = new SupabaseSubscriptionRepository(supabase);
-      const profileRepo = new SupabaseProfileRepository(supabase);
+    const subRepo = new SupabaseSubscriptionRepository(supabase);
+    const profileRepo = new SupabaseProfileRepository(supabase);
 
-      const [userSubs, profile] = await Promise.all([
-        subRepo.list(user.id),
-        profileRepo.getProfile(user.id),
-      ]);
+    const [userSubs, profile] = await Promise.all([
+      subRepo.list(user.id),
+      profileRepo.getProfile(user.id),
+    ]);
 
-      if (userSubs && userSubs.length > 0) {
-        subscriptions = userSubs;
-      }
-      if (profile) {
-        reminderDays = profile.reminderDaysBefore ?? 3;
-      }
-      recipientEmail = user.email ?? profile?.email ?? 'user@example.com';
-      recipientName = user.user_metadata?.full_name ?? user.email?.split('@')[0] ?? 'there';
+    if (userSubs && userSubs.length > 0) {
+      subscriptions = userSubs;
     }
-
-    if (body.testEmail && typeof body.testEmail === 'string') {
-      recipientEmail = body.testEmail.trim();
+    if (profile) {
+      reminderDays = profile.reminderDaysBefore ?? 3;
     }
+    recipientEmail = user.email ?? profile?.email ?? 'user@example.com';
+    recipientName = user.user_metadata?.full_name ?? user.email?.split('@')[0] ?? 'there';
 
     const summary = generateRenewalNotifications(subscriptions, {
       reminderDaysBefore: reminderDays,
     });
 
-    if (summary.items.length === 0 && !body.forceTest) {
+    if (summary.items.length === 0 && !input.forceTest) {
       return NextResponse.json({
         message: 'No upcoming renewals due within reminder window.',
         itemsCount: 0,
@@ -130,7 +125,6 @@ export async function POST(req: Request) {
       error: result.error,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Internal error';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return toErrorResponse(error, 'notifications send POST');
   }
 }

@@ -15,7 +15,11 @@ import {
   MAX_CSV_ROWS,
   MAX_TEXT_LENGTH,
 } from '@/features/imports';
-import { importRowSchema, uploadedFileSchema } from '@/lib/validation';
+import {
+  importRowSchema,
+  receiptImageFileSchema,
+  statementFileSchema,
+} from '@/lib/validation';
 import { makeTextPdf } from '../fixtures/makePdf';
 
 const VALID_CSV = [
@@ -181,16 +185,16 @@ describe('parseCsv', () => {
   });
 });
 
-describe('uploadedFileSchema (§12)', () => {
+describe('statementFileSchema (§12)', () => {
   const valid = { name: 'statement.csv', size: 1024, type: 'text/csv' };
 
   it('accepts a valid CSV file', () => {
-    expect(uploadedFileSchema.safeParse(valid).success).toBe(true);
+    expect(statementFileSchema.safeParse(valid).success).toBe(true);
   });
 
   it('accepts a valid PDF file', () => {
     expect(
-      uploadedFileSchema.safeParse({
+      statementFileSchema.safeParse({
         name: 'statement.pdf',
         size: 2048,
         type: 'application/pdf',
@@ -200,39 +204,56 @@ describe('uploadedFileSchema (§12)', () => {
 
   it('rejects a file over the 5 MB limit', () => {
     const oversize = { ...valid, size: 5 * 1024 * 1024 + 1 };
-    expect(uploadedFileSchema.safeParse(oversize).success).toBe(false);
+    expect(statementFileSchema.safeParse(oversize).success).toBe(false);
   });
 
   it('accepts a file exactly at the 5 MB limit', () => {
     const atLimit = { ...valid, size: 5 * 1024 * 1024 };
-    expect(uploadedFileSchema.safeParse(atLimit).success).toBe(true);
+    expect(statementFileSchema.safeParse(atLimit).success).toBe(true);
   });
 
   it('rejects a wrong extension', () => {
     const wrongExt = { name: 'statement.exe', size: 1024, type: 'text/csv' };
-    expect(uploadedFileSchema.safeParse(wrongExt).success).toBe(false);
+    expect(statementFileSchema.safeParse(wrongExt).success).toBe(false);
   });
 
   it('rejects a wrong MIME type', () => {
     const wrongMime = { name: 'statement.csv', size: 1024, type: 'image/png' };
-    expect(uploadedFileSchema.safeParse(wrongMime).success).toBe(false);
+    expect(statementFileSchema.safeParse(wrongMime).success).toBe(false);
   });
 
   it('rejects a CSV name paired with a PDF MIME type', () => {
     const mismatch = { name: 'statement.csv', size: 1024, type: 'application/pdf' };
-    expect(uploadedFileSchema.safeParse(mismatch).success).toBe(false);
+    expect(statementFileSchema.safeParse(mismatch).success).toBe(false);
   });
 
-  it('accepts valid receipt image files (PNG, JPG, WEBP)', () => {
-    const validPng = { name: 'receipt.png', size: 1024 * 100, type: 'image/png' };
-    expect(uploadedFileSchema.safeParse(validPng).success).toBe(true);
-
-    const validJpg = { name: 'tng_slip.jpg', size: 1024 * 200, type: 'image/jpeg' };
-    expect(uploadedFileSchema.safeParse(validJpg).success).toBe(true);
+  it('rejects receipt images at the server statement boundary', () => {
+    const image = { name: 'receipt.png', size: 1024 * 100, type: 'image/png' };
+    expect(statementFileSchema.safeParse(image).success).toBe(false);
   });
 
   it('rejects an empty file', () => {
-    expect(uploadedFileSchema.safeParse({ ...valid, size: 0 }).success).toBe(false);
+    expect(statementFileSchema.safeParse({ ...valid, size: 0 }).success).toBe(false);
+  });
+});
+
+describe('receiptImageFileSchema (§12)', () => {
+  it.each([
+    ['receipt.png', 'image/png'],
+    ['receipt.jpg', 'image/jpeg'],
+    ['receipt.jpeg', 'image/jpeg'],
+    ['receipt.webp', 'image/webp'],
+  ])('accepts browser-only receipt format %s', (name, type) => {
+    expect(receiptImageFileSchema.safeParse({ name, type, size: 1024 }).success).toBe(true);
+  });
+
+  it('rejects SVG and mismatched extensions', () => {
+    expect(
+      receiptImageFileSchema.safeParse({ name: 'receipt.svg', type: 'image/svg+xml', size: 1024 }).success,
+    ).toBe(false);
+    expect(
+      receiptImageFileSchema.safeParse({ name: 'receipt.png', type: 'image/jpeg', size: 1024 }).success,
+    ).toBe(false);
   });
 });
 

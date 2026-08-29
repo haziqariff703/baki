@@ -1,7 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { UserProfile } from '@/lib/validation/profile';
-import { userProfileSchema, DEFAULT_USER_PROFILE } from '@/lib/validation/profile';
+import { DEFAULT_USER_PROFILE } from '@/lib/validation/profile';
 import { resolveUniversityDomain } from '@/features/settings/domainExtractor';
+import { ApplicationError, logOperational } from '@/lib/logging';
 
 export interface ProfileRepository {
   getProfile(
@@ -25,7 +26,7 @@ export class SupabaseProfileRepository implements ProfileRepository {
       .maybeSingle();
 
     if (error) {
-      console.warn('[SupabaseProfileRepository] getProfile error:', error.message);
+      logOperational({ level: 'warn', message: 'profile read failed' });
     }
 
     const email = fallbackUser?.email || data?.email || DEFAULT_USER_PROFILE.email;
@@ -76,7 +77,7 @@ export class SupabaseProfileRepository implements ProfileRepository {
 
 
   async upsertProfile(userId: string, profile: UserProfile): Promise<UserProfile> {
-    const fullRow: Record<string, any> = {
+    const fullRow: Record<string, unknown> = {
       id: userId,
       display_name: profile.displayName,
       is_student: profile.isStudent,
@@ -109,7 +110,7 @@ export class SupabaseProfileRepository implements ProfileRepository {
       return profile;
     }
 
-    console.warn('[SupabaseProfileRepository] Full update failed, attempting standard attributes update:', updateError.message);
+    logOperational({ level: 'warn', message: 'profile full update failed; using compatibility fallback' });
 
     // 3. Fallback: Update standard attributes without payday_day_of_month in case the latest migration is pending
     const standardRow = {
@@ -146,7 +147,7 @@ export class SupabaseProfileRepository implements ProfileRepository {
       .eq('id', userId);
 
     if (coreError) {
-      throw new Error(`Failed to update profile: ${coreError.message}`);
+      throw new ApplicationError('INTERNAL_ERROR', 'Unable to save profile');
     }
 
     return profile;

@@ -36,7 +36,7 @@ export const userProfileSchema = z.object({
   reminderDaysBefore: z.union([z.literal(1), z.literal(3), z.literal(7)]),
   defaultViewMode: defaultViewModeSchema,
   statementRetentionWindow: statementRetentionSchema,
-});
+}).strict();
 
 export type UserProfile = z.infer<typeof userProfileSchema>;
 

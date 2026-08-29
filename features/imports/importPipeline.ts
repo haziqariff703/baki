@@ -10,6 +10,7 @@ import { parseCsv, MAX_CSV_ROWS } from './csvParser';
 import { parsePdfText, MAX_PDF_PAGES } from './pdfParser';
 import type { ImportRowSchema } from '@/lib/validation';
 import { importRowsArraySchema } from '@/lib/validation';
+import { logOperational } from '@/lib/logging';
 import type {
   ImportRecord,
   ImportRepository,
@@ -131,8 +132,8 @@ export async function runImport(opts: {
   let storagePath: string | null = null;
   try {
     storagePath = await storage.upload(userId, source, bytes);
-  } catch (storageErr) {
-    console.warn('[runImport] Storage upload warning (continuing with extraction):', storageErr);
+  } catch {
+    logOperational({ level: 'warn', message: 'import temporary storage upload failed' });
   }
 
   const { rows, errors, truncated } = await parseFile(source, bytes, password);
@@ -188,8 +189,12 @@ export async function runImport(opts: {
       truncated,
       importedCount: rowCount,
     };
-  } catch (persistErr) {
-    console.error('[runImport] Transaction persistence error:', persistErr);
+  } catch {
+    logOperational({
+      level: 'error',
+      message: 'import transaction persistence failed',
+      errorCode: 'FILE_PROCESSING_FAILED',
+    });
     // Persistence failed — still best-effort purge the raw file so no statement
     // lingers (§12). Surface a non-sensitive failure; no file bytes/merchants.
     if (storagePath) {

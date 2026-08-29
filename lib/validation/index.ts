@@ -55,13 +55,15 @@ export {
   importRowSchema,
   importRowsArraySchema,
   importUploadSchema,
-  uploadedFileSchema,
+  receiptImageFileSchema,
+  statementFileSchema,
 } from './imports';
 export type {
   ImportRowSchema,
   ImportRowsArraySchema,
   ImportUploadSchema,
-  UploadedFileSchema,
+  ReceiptImageFileSchema,
+  StatementFileSchema,
 } from './imports';
 export {
   DEFAULT_USER_PROFILE,
