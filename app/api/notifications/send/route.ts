@@ -13,7 +13,7 @@ import { z } from 'zod';
 const notificationRequestSchema = z.object({ forceTest: z.boolean().optional() }).strict();
 
 /**
- * Dispatch Email Notifications Route (§11 / §2.3 / £Ĵ.1).
+ * Dispatch Email Notifications Route (§11 / §2.3 / §14.1).
  */
 export async function POST(req: Request) {
   try {

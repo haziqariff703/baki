@@ -12,6 +12,6 @@ export function buildContentSecurityPolicy(nonce: string, isDevelopment: boolean
     "base-uri 'self'",
     "form-action 'self'",
     "frame-ancestors 'none'",
-    'upgrade-insecure-requests',
+    ...(isDevelopment ? [] : ['upgrade-insecure-requests']),
   ].join('; ');
 }

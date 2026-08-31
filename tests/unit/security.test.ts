@@ -105,4 +105,10 @@ describe('content security policy', () => {
     expect(policy).toContain("object-src 'none'");
     expect(policy).toContain("frame-ancestors 'none'");
   });
+
+  it('does not upgrade localhost requests during development', () => {
+    expect(buildContentSecurityPolicy('test-nonce', true)).not.toContain(
+      'upgrade-insecure-requests',
+    );
+  });
 });
