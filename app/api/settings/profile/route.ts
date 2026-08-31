@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { userProfileSchema } from '@/lib/validation/profile';
 import { SupabaseProfileRepository } from '@/features/settings/repository';
+import { toErrorResponse } from '@/lib/api';
 
 /**
  * User Profile Settings API Handler (§11 Auth / §8.1 Sen / §2.3 Privacy).
@@ -33,8 +34,7 @@ export async function GET() {
       profile,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Internal error';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return toErrorResponse(error, 'settings profile GET');
   }
 }
 
@@ -50,10 +50,10 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const body = await request.json();
+    const body: unknown = await request.json().catch(() => null);
     const validation = userProfileSchema.safeParse({
-      ...body,
-      email: user.email || body.email,
+      ...(body && typeof body === 'object' ? body : {}),
+      email: user.email,
     });
 
     if (!validation.success) {
@@ -68,7 +68,6 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({ success: true, profile: saved });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Internal error';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return toErrorResponse(error, 'settings profile PATCH');
   }
 }

@@ -1,4 +1,5 @@
 import type { SendEmailPayload, SendEmailResult } from './types';
+import { logOperational } from '@/lib/logging';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const DEFAULT_FROM = process.env.RESEND_FROM_EMAIL || 'Baki <onboarding@resend.dev>';
@@ -26,8 +27,7 @@ export async function sendEmailNotification(
 
   // Fallback: If no API key is configured (local dev / test), mock successfully.
   if (!apiKey || apiKey.trim() === '') {
-    const masked = to.length > 4 ? `${to.slice(0, 3)}***` : 'user';
-    console.info(`[Email Transport: Mock] Simulated email to ${masked}: "${subject}"`);
+    logOperational({ level: 'info', message: 'email delivery mocked' });
     return {
       success: true,
       mocked: true,
@@ -55,7 +55,7 @@ export async function sendEmailNotification(
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       const rawMsg = errorData.message || `Resend API returned status ${response.status}`;
-      console.error('[Email Transport: Error]', rawMsg);
+      logOperational({ level: 'error', message: 'email provider rejected request' });
 
       // Privacy by Design (AGENTS.md §2.3 / §14.1):
       // Never expose upstream vendor error text that contains developer account email addresses.
@@ -81,9 +81,8 @@ export async function sendEmailNotification(
       messageId: data.id,
       mocked: false,
     };
-  } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : 'Network error';
-    console.error('[Email Transport: Exception]', errorMsg);
+  } catch {
+    logOperational({ level: 'error', message: 'email provider request failed' });
     return {
       success: false,
       error: 'Network error during email delivery.',

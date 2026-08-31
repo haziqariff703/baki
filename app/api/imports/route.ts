@@ -17,9 +17,9 @@ import { requireUser } from '@/lib/auth';
 import { toErrorResponse } from '@/lib/api';
 import { createServerSupabase } from '@/lib/database';
 import {
-  uploadedFileSchema,
+  statementFileSchema,
   importUploadSchema,
-  type UploadedFileSchema,
+  type StatementFileSchema,
 } from '@/lib/validation';
 import { MAX_UPLOAD_SIZE_BYTES } from '@/lib/validation/imports';
 import { runImport } from '@/features/imports';
@@ -34,6 +34,8 @@ import {
 } from '@/features/recurring-detection';
 
 import { checkRateLimit, getClientIp } from '@/lib/security/rate-limit';
+import { detectStatementFileType } from '@/lib/security/request';
+import { logOperational } from '@/lib/logging';
 
 export const runtime = 'nodejs'; // pdfjs + Buffer require Node
 export const dynamic = 'force-dynamic';
@@ -84,7 +86,7 @@ export async function POST(request: Request) {
 
     // Re-derive the descriptor server-side (never trust the client's claimed
     // name/size/type) and enforce the hard byte-length cap (§12, §19).
-    const descriptor: UploadedFileSchema = uploadedFileSchema.parse({
+    const descriptor: StatementFileSchema = statementFileSchema.parse({
       name: parsed.file.name,
       size: parsed.file.size,
       type: parsed.file.type,
@@ -93,6 +95,16 @@ export async function POST(request: Request) {
     if (bytes.byteLength > MAX_UPLOAD_SIZE_BYTES) {
       return NextResponse.json(
         { error: 'VALIDATION_ERROR', issues: [{ path: 'file', message: 'File exceeds the 5 MB upload limit' }] },
+        { status: 400 },
+      );
+    }
+    const detectedType = detectStatementFileType(bytes);
+    if (detectedType !== sourceFromMime(descriptor.type)) {
+      return NextResponse.json(
+        {
+          error: 'VALIDATION_ERROR',
+          issues: [{ path: 'file', message: 'File content does not match its declared format' }],
+        },
         { status: 400 },
       );
     }
@@ -147,8 +159,8 @@ export async function POST(request: Request) {
           await candidateRepo.insertMany(user.id, newCandidates);
           candidatesCount = newCandidates.length;
         }
-      } catch (cadenceErr) {
-        console.error('[imports POST] Cadence detection warning:', cadenceErr);
+      } catch {
+        logOperational({ level: 'warn', message: 'recurring cadence detection failed' });
       }
 
       // §11 step 5 — sanitized response (no raw file content, no financial figures).

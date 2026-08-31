@@ -38,7 +38,12 @@ import {
   MAX_CSV_ROWS,
   MAX_PDF_PAGES,
 } from '@/features/imports';
-import { uploadedFileSchema, type ImportRowSchema } from '@/lib/validation';
+import {
+  receiptImageFileSchema,
+  statementFileSchema,
+  type ImportRowSchema,
+} from '@/lib/validation';
+import { detectReceiptImageType } from '@/lib/security/request';
 import { MAX_UPLOAD_SIZE_BYTES } from '@/lib/validation/imports';
 import { senToMyr } from '@/lib/money';
 import { toDatePart } from '@/lib/dates';
@@ -132,7 +137,8 @@ export function ImportWizard() {
   }
 
   async function handleFile(file: File, customPassword?: string) {
-    const descriptor = uploadedFileSchema.safeParse({
+    const isReceiptImage = file.type.startsWith('image/');
+    const descriptor = (isReceiptImage ? receiptImageFileSchema : statementFileSchema).safeParse({
       name: file.name,
       size: file.size,
       type: file.type,
@@ -141,7 +147,7 @@ export function ImportWizard() {
     if (!descriptor.success) {
       const issue = descriptor.error.issues[0]?.message ?? '';
       let message: string = t('errorInvalid');
-      if (issue.includes('CSV, PDF, or image') || issue.includes('extension')) message = t('errorWrongType');
+      if (issue.includes('supported') || issue.includes('extension')) message = t('errorWrongType');
       else if (issue.includes('5 MB')) message = t('errorOversize', { maxSize: MAX_SIZE_MB });
       setStatus({ state: 'error', message });
       return;
@@ -168,7 +174,15 @@ export function ImportWizard() {
           fileName,
           outcome: { kind: 'csv', rows: result.rows, errors, truncated: result.truncated },
         });
-      } else if (file.type.startsWith('image/')) {
+      } else if (isReceiptImage) {
+        const detectedType = detectReceiptImageType(
+          new Uint8Array(await file.slice(0, 16).arrayBuffer()),
+        );
+        if (detectedType !== file.type) {
+          fileRef.current = null;
+          setStatus({ state: 'error', message: t('errorWrongType') });
+          return;
+        }
         setOcrProgress(0);
         try {
           const result = await recognizeReceiptImage(file, (pct) => {

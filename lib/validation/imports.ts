@@ -5,8 +5,8 @@
  * (the user's browser / a downloaded file). These schemas validate that input
  * *before* any domain logic, sanitisation, or persistence runs.
  *
- * §12 file upload security: reject anything that is not a small, named
- * CSV/PDF. §8.1: amounts are positive integer sen. Never floats.
+ * §12 file upload security: statements and browser-only receipt images have
+ * separate allowlists. §8.1: amounts are positive integer sen. Never floats.
  */
 import { z } from 'zod';
 
@@ -34,7 +34,7 @@ const safeFilename = z
  * An uploaded CSV file descriptor (name, size in bytes, MIME type).
  * Accepts either `text/csv` + `.csv` or `application/pdf` + `.pdf`.
  */
-export const uploadedFileSchema = z
+const fileDescriptorSchema = z
   .object({
     name: safeFilename,
     /** Size in bytes. Must not exceed MAX_UPLOAD_SIZE_BYTES. */
@@ -45,33 +45,37 @@ export const uploadedFileSchema = z
       .max(MAX_UPLOAD_SIZE_BYTES, {
         error: 'File exceeds the 5 MB upload limit',
       }),
-    /** MIME type reported by the client / detected by the browser. */
-    type: z
-      .string({ error: 'File type is required' })
-      .trim()
-      .min(1, { error: 'File type is required' })
-      .refine(
-        (type) =>
-          type === 'text/csv' ||
-          type === 'application/pdf' ||
-          type.startsWith('image/'),
-        { message: 'Only CSV, PDF, or image files (PNG, JPG) are supported' },
-      ),
+    type: z.string({ error: 'File type is required' }).trim().min(1),
   })
-  .strict()
+  .strict();
+
+/** Server-uploaded statement formats. Receipt images never cross this boundary. */
+export const statementFileSchema = fileDescriptorSchema
+  .refine((file) => file.type === 'text/csv' || file.type === 'application/pdf', {
+    message: 'Only CSV or PDF statement files are supported',
+  })
   .refine(
     (file) => {
       const lower = file.name.toLowerCase();
       if (file.type === 'application/pdf') return lower.endsWith('.pdf');
       if (file.type === 'text/csv') return lower.endsWith('.csv');
-      if (file.type.startsWith('image/')) {
-        return (
-          lower.endsWith('.png') ||
-          lower.endsWith('.jpg') ||
-          lower.endsWith('.jpeg') ||
-          lower.endsWith('.webp')
-        );
-      }
+      return false;
+    },
+    { message: 'File extension does not match its type' },
+  );
+
+/** Browser-only OCR formats. SVG is intentionally excluded. */
+export const receiptImageFileSchema = fileDescriptorSchema
+  .refine(
+    (file) => ['image/png', 'image/jpeg', 'image/webp'].includes(file.type),
+    { message: 'Only PNG, JPEG, or WebP receipt images are supported' },
+  )
+  .refine(
+    (file) => {
+      const lower = file.name.toLowerCase();
+      if (file.type === 'image/png') return lower.endsWith('.png');
+      if (file.type === 'image/jpeg') return lower.endsWith('.jpg') || lower.endsWith('.jpeg');
+      if (file.type === 'image/webp') return lower.endsWith('.webp');
       return false;
     },
     { message: 'File extension does not match its type' },
@@ -107,14 +111,15 @@ export const importRowSchema = z
   })
   .strict();
 
-export type UploadedFileSchema = z.infer<typeof uploadedFileSchema>;
+export type StatementFileSchema = z.infer<typeof statementFileSchema>;
+export type ReceiptImageFileSchema = z.infer<typeof receiptImageFileSchema>;
 export type ImportRowSchema = z.infer<typeof importRowSchema>;
 
 /**
  * Multipart upload field schema (§7, §12). Validates the `File` object and an
  * optional idempotency key. The file's name/size/type are re-derived
  * server-side from the actual `File` (never trusted from the client) and
- * re-checked against `uploadedFileSchema` + a byte-length cap in the route.
+ * re-checked against `statementFileSchema` + a byte-length cap in the route.
  */
 export const importUploadSchema = z
   .object({

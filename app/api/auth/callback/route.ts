@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 // The client you created from the Server-Side Auth instructions
 import { createClient } from '@/lib/supabase/server'
+import { logOperational } from '@/lib/logging'
+import { safeRelativePath } from '@/lib/security/request'
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url)
@@ -9,7 +11,7 @@ export async function GET(request: Request) {
   const errorCode = searchParams.get('error_code')
   
   // if "next" is in param, use it as the redirect URL, default to dashboard
-  const next = searchParams.get('next') ?? '/dashboard'
+  const next = safeRelativePath(searchParams.get('next'), '/dashboard')
 
   const supabase = await createClient()
 
@@ -17,15 +19,7 @@ export async function GET(request: Request) {
     const { error } = await supabase.auth.exchangeCodeForSession(code)
     
     if (!error) {
-      const forwardedHost = request.headers.get('x-forwarded-host')
-      const isLocalEnv = process.env.NODE_ENV === 'development'
-      if (isLocalEnv) {
-        return NextResponse.redirect(`${origin}${next}`)
-      } else if (forwardedHost) {
-        return NextResponse.redirect(`https://${forwardedHost}${next}`)
-      } else {
-        return NextResponse.redirect(`${origin}${next}`)
-      }
+      return NextResponse.redirect(new URL(next, origin))
     }
 
     // If exchangeCodeForSession threw flow_state_already_used, the session may already have been set
@@ -35,7 +29,7 @@ export async function GET(request: Request) {
       return NextResponse.redirect(`${origin}${next}`)
     }
 
-    console.warn('[Auth Callback] Code exchange failed:', error.message)
+    logOperational({ level: 'warn', message: 'auth callback code exchange failed' })
   }
 
   // If there's an error param or code exchange failed and no active user session
